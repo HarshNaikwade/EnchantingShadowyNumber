@@ -1,0 +1,11 @@
+node_modules/
+backend/uploads/
+backend/compliance_checker.db
+backend/__pycache__/
+backend/routes/__pycache__/
+backend/.env
+*.pyc
+*.pyo
+dist/
+.DS_Store
+*.log
