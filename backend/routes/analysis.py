@@ -1,3 +1,4 @@
+import os
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -8,6 +9,8 @@ from database import get_db
 from models import AnalysisSession, Document, ComplianceResult, RBIClause
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
+
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./uploads")
 
 
 class CreateSessionRequest(BaseModel):
@@ -142,6 +145,11 @@ def delete_session(session_id: int, db: Session = Depends(get_db)):
     session = db.query(AnalysisSession).filter(AnalysisSession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+    documents = db.query(Document).filter(Document.session_id == session_id).all()
+    for doc in documents:
+        file_path = os.path.join(UPLOAD_DIR, doc.filename)
+        if os.path.exists(file_path):
+            os.remove(file_path)
     db.delete(session)
     db.commit()
     return {"message": "Session deleted successfully"}

@@ -263,7 +263,6 @@ export default function AnalysisWorkspace() {
     onDrop,
     accept: {
       "application/pdf": [".pdf"],
-      "application/msword": [".doc"],
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
         [".docx"],
     },
