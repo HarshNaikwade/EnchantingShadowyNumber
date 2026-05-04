@@ -8,7 +8,9 @@ from pydantic import BaseModel
 from database import get_db
 from models import RBIClause, ComplianceResult
 from ai_analyzer import (
-    check_ollama_connection,
+    check_ai_connection,
+    get_active_provider,
+    get_ai_model,
     generate_rbi_understanding,
     resolve_ollama_model,
     OLLAMA_MODEL,
@@ -28,16 +30,21 @@ async def _run_rbi_clause_analysis_async(db_url: str, force: bool = False):
     db = SessionLocal()
 
     try:
-        logger.info("Starting RBI clause analysis (force=%s)", force)
-        is_connected = await check_ollama_connection()
+        provider = get_active_provider()
+        logger.info("Starting RBI clause analysis (force=%s, provider=%s)", force, provider)
+
+        is_connected = await check_ai_connection()
         if not is_connected:
-            logger.warning("Ollama not reachable, skipping RBI clause analysis")
+            logger.warning("%s not reachable, skipping RBI clause analysis", provider.upper())
             return
 
-        resolved_model = await resolve_ollama_model(OLLAMA_MODEL)
-        if not resolved_model:
-            logger.warning("No Ollama models available, skipping RBI clause analysis")
-            return
+        if provider == "groq":
+            resolved_model = get_ai_model()
+        else:
+            resolved_model = await resolve_ollama_model(OLLAMA_MODEL)
+            if not resolved_model:
+                logger.warning("No Ollama models available, skipping RBI clause analysis")
+                return
 
         clauses = db.query(RBIClause).all()
         if not clauses:
@@ -51,7 +58,7 @@ async def _run_rbi_clause_analysis_async(db_url: str, force: bool = False):
             understanding = await generate_rbi_understanding(
                 clause.clause_text,
                 clause.predefined_meaning,
-                model=resolved_model
+                model=resolved_model,
             )
             clause.ai_understanding = understanding
             updated += 1

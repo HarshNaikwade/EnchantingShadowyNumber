@@ -13,6 +13,7 @@ Quick-start:
     GROQ_API_KEY=gsk_...
     GROQ_MODEL=llama-3.3-70b-versatile
 """
+import asyncio
 import json
 import logging
 import re
@@ -199,14 +200,29 @@ async def groq_generate(
 
     logger.debug("Groq request → model=%s prompt_len=%d", model, len(prompt))
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        response = await client.post(
-            f"{GROQ_BASE_URL}/chat/completions",
-            headers=headers,
-            json=payload,
-        )
+    max_retries = 4
+    for attempt in range(max_retries + 1):
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(
+                f"{GROQ_BASE_URL}/chat/completions",
+                headers=headers,
+                json=payload,
+            )
+
+        if response.status_code == 429:
+            if attempt < max_retries:
+                wait = int(response.headers.get("retry-after", "")) if response.headers.get("retry-after", "").isdigit() else min(10 * (2 ** attempt), 60)
+                logger.warning(
+                    "Groq rate limited (429). Waiting %ds before retry %d/%d.",
+                    wait, attempt + 1, max_retries,
+                )
+                await asyncio.sleep(wait)
+                continue
+            response.raise_for_status()
+
         response.raise_for_status()
         data = response.json()
+        break
 
     try:
         raw = data["choices"][0]["message"]["content"]

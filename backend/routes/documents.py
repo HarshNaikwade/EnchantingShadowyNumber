@@ -125,7 +125,9 @@ async def _run_ai_analysis_async(document_id: int, db_url: str):
 
         # Step 3: Check compliance for each RBI clause.
         progress_update(document_id, "check_compliance", "Checking compliance")
-        for rbi_clause in rbi_clauses:
+        for idx, rbi_clause in enumerate(rbi_clauses):
+            if idx > 0 and provider == "groq":
+                await asyncio.sleep(2)
             progress_update(document_id, message=f"Checking RBI clause {rbi_clause.id}")
             result = await check_compliance(
                 agreement_clauses,
