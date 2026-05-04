@@ -59,9 +59,27 @@ export interface HealthStatus {
   ollama_url: string
 }
 
+export interface RBIClausePayload {
+  clause_text: string
+  predefined_meaning?: string
+  category?: string
+}
+
 export const apiClient = {
   health: (): Promise<HealthStatus> =>
     api.get('/health').then(r => r.data),
+
+  listClauses: (): Promise<RBIClause[]> =>
+    api.get('/clauses/').then(r => r.data),
+
+  createClause: (payload: RBIClausePayload): Promise<RBIClause> =>
+    api.post('/clauses/', payload).then(r => r.data),
+
+  updateClause: (id: number, payload: Partial<RBIClausePayload>): Promise<RBIClause> =>
+    api.put(`/clauses/${id}`, payload).then(r => r.data),
+
+  deleteClause: (id: number): Promise<void> =>
+    api.delete(`/clauses/${id}`).then(r => r.data),
 
   listSessions: (): Promise<AnalysisSession[]> =>
     api.get('/analysis/').then(r => r.data),

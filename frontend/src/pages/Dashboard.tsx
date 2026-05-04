@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Plus, FileText, Calendar, Trash2, ChevronRight, Shield, Loader2 } from 'lucide-react'
+import { Plus, FileText, Calendar, Trash2, ChevronRight, Shield, Loader2, Settings2 } from 'lucide-react'
 import { format } from 'date-fns'
 import apiClient from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -67,6 +67,10 @@ export default function Dashboard() {
             </div>
             <div className="flex items-center gap-3">
               <OllamaStatusBar />
+              <Button variant="outline" onClick={() => navigate('/settings/clauses')}>
+                <Settings2 className="h-4 w-4 mr-2" />
+                Manage Clauses
+              </Button>
               <Button onClick={() => setShowCreate(true)}>
                 <Plus className="h-4 w-4 mr-2" />
                 New Analysis

@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from database import engine, Base
 from models import RBIClause
 from database import SessionLocal
-from routes import analysis, documents, reports
+from routes import analysis, documents, reports, clauses
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -55,6 +55,7 @@ app.add_middleware(
 app.include_router(analysis.router)
 app.include_router(documents.router)
 app.include_router(reports.router)
+app.include_router(clauses.router)
 
 
 @app.get("/api/health")
