@@ -197,6 +197,12 @@ export const apiClient = {
 
   getBackendLogs: (limit = 200): Promise<BackendLogResponse> =>
     api.get(`/debug/logs?limit=${limit}`).then((r) => r.data),
+
+  getProvider: (): Promise<{ provider: string }> =>
+    api.get("/settings/provider").then((r) => r.data),
+
+  setProvider: (provider: string): Promise<{ provider: string }> =>
+    api.post("/settings/provider", { provider }).then((r) => r.data),
 };
 
 export default apiClient;

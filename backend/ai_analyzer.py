@@ -38,14 +38,18 @@ GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
 
 
 # ---------------------------------------------------------------------------
-# Provider helpers
+# Provider helpers  (read runtime_config so the dropdown switch takes effect)
 # ---------------------------------------------------------------------------
 def get_active_provider() -> str:
-    return AI_PROVIDER
+    try:
+        from runtime_config import get_setting
+        return get_setting("ai_provider", AI_PROVIDER)
+    except Exception:
+        return AI_PROVIDER
 
 
 def get_ai_model() -> str:
-    return GROQ_MODEL if AI_PROVIDER == "groq" else OLLAMA_MODEL
+    return GROQ_MODEL if get_active_provider() == "groq" else OLLAMA_MODEL
 
 
 # ---------------------------------------------------------------------------
@@ -77,7 +81,7 @@ async def check_groq_connection() -> bool:
 
 async def check_ai_connection() -> bool:
     """Check whether the active AI provider is reachable."""
-    if AI_PROVIDER == "groq":
+    if get_active_provider() == "groq":
         return await check_groq_connection()
     return await check_ollama_connection()
 
@@ -230,7 +234,7 @@ async def ai_generate(
     on_chunk: Optional[Callable[[str], None]] = None,
 ) -> str:
     """Call the active AI provider (ollama or groq) and return the text output."""
-    if AI_PROVIDER == "groq":
+    if get_active_provider() == "groq":
         return await groq_generate(prompt, model=model, on_chunk=on_chunk)
     return await ollama_generate(prompt, model=model, on_chunk=on_chunk)
 
