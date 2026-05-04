@@ -21,9 +21,37 @@ async def check_ollama_connection() -> bool:
         return False
 
 
+async def list_ollama_models() -> list[str]:
+    """Return available Ollama model names."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
+            response.raise_for_status()
+            data = response.json()
+            return [m.get("name") for m in data.get("models", []) if m.get("name")]
+    except Exception:
+        return []
+
+
+async def resolve_ollama_model(requested: Optional[str] = None) -> Optional[str]:
+    """Resolve a usable model; fall back to the first available model if needed."""
+    models = await list_ollama_models()
+    if not models:
+        return None
+    if requested and requested in models:
+        return requested
+    if requested:
+        logger.warning("Requested Ollama model '%s' not found. Using '%s'.", requested, models[0])
+    return models[0]
+
+
 async def ollama_generate(prompt: str, model: str = None) -> str:
     """Send a prompt to Ollama and return the response."""
-    model = model or OLLAMA_MODEL
+    if model is None:
+        model = await resolve_ollama_model(OLLAMA_MODEL)
+    if not model:
+        logger.warning("No Ollama models available. Skipping AI analysis.")
+        return ""
     async with httpx.AsyncClient(timeout=120.0) as client:
         payload = {
             "model": model,
@@ -65,7 +93,7 @@ def extract_json_from_response(text: str) -> Optional[dict]:
         return None
 
 
-async def extract_agreement_clauses(text: str) -> list:
+async def extract_agreement_clauses(text: str, model: str = None) -> list:
     """Step 1: Extract all distinct clauses from the agreement text."""
     prompt = f"""You are a legal document analyzer. Extract all distinct clauses from the following agreement text.
 
@@ -89,7 +117,7 @@ Agreement Text:
 
 Respond ONLY with valid JSON. No explanations outside the JSON structure."""
 
-    response = await ollama_generate(prompt)
+    response = await ollama_generate(prompt, model=model)
     data = extract_json_from_response(response)
     if data and isinstance(data, dict):
         return data.get("clauses", [])
@@ -98,7 +126,7 @@ Respond ONLY with valid JSON. No explanations outside the JSON structure."""
     return []
 
 
-async def generate_rbi_understanding(clause_text: str, predefined_meaning: str) -> str:
+async def generate_rbi_understanding(clause_text: str, predefined_meaning: str, model: str = None) -> str:
     """Step 2: Generate AI understanding of an RBI clause."""
     prompt = f"""You are an RBI (Reserve Bank of India) compliance expert.
 
@@ -114,7 +142,7 @@ Respond with a JSON object:
 
 Respond ONLY with valid JSON."""
 
-    response = await ollama_generate(prompt)
+    response = await ollama_generate(prompt, model=model)
     data = extract_json_from_response(response)
     if data and isinstance(data, dict):
         return data.get("ai_understanding", predefined_meaning)
@@ -125,7 +153,8 @@ async def check_compliance(
     agreement_clauses: list,
     rbi_clause_text: str,
     rbi_clause_id: int,
-    document_type: str = "Agreement"
+    document_type: str = "Agreement",
+    model: str = None
 ) -> dict:
     """Step 3: Check compliance of agreement clauses against an RBI clause."""
 
@@ -167,7 +196,7 @@ Rules:
 
 Respond ONLY with valid JSON."""
 
-    response = await ollama_generate(prompt)
+    response = await ollama_generate(prompt, model=model)
     data = extract_json_from_response(response)
 
     if data and isinstance(data, dict):

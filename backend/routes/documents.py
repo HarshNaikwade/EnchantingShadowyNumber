@@ -13,6 +13,8 @@ from ai_analyzer import (
     extract_agreement_clauses,
     generate_rbi_understanding,
     check_compliance,
+    resolve_ollama_model,
+    OLLAMA_MODEL,
 )
 
 router = APIRouter(prefix="/api/document", tags=["documents"])
@@ -65,13 +67,21 @@ async def run_ai_analysis(document_id: int, db_url: str):
             db.commit()
             return
 
-        agreement_clauses = await extract_agreement_clauses(doc.extracted_text)
+        resolved_model = await resolve_ollama_model(OLLAMA_MODEL)
+        if not resolved_model:
+            logger.warning("No Ollama models available, skipping AI analysis")
+            doc.processing_status = "completed_no_ai"
+            db.commit()
+            return
+
+        agreement_clauses = await extract_agreement_clauses(doc.extracted_text, model=resolved_model)
 
         for rbi_clause in rbi_clauses:
             if not rbi_clause.ai_understanding and rbi_clause.predefined_meaning:
                 understanding = await generate_rbi_understanding(
                     rbi_clause.clause_text,
-                    rbi_clause.predefined_meaning
+                    rbi_clause.predefined_meaning,
+                    model=resolved_model
                 )
                 rbi_clause.ai_understanding = understanding
                 db.commit()
@@ -90,7 +100,8 @@ async def run_ai_analysis(document_id: int, db_url: str):
                 agreement_clauses,
                 rbi_clause.clause_text,
                 rbi_clause.id,
-                doc.file_type
+                doc.file_type,
+                model=resolved_model
             )
 
             compliance = ComplianceResult(
@@ -222,6 +233,30 @@ def get_document_status(document_id: int, db: Session = Depends(get_db)):
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     return {"document_id": document_id, "status": doc.processing_status}
+
+
+@router.post("/{document_id}/rerun")
+def rerun_analysis(
+    document_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if not doc.extracted_text:
+        raise HTTPException(status_code=400, detail="Document has no extracted text to analyze")
+
+    doc.processing_status = "queued"
+    session = db.query(AnalysisSession).filter(AnalysisSession.id == doc.session_id).first()
+    if session:
+        session.status = "processing"
+    db.commit()
+
+    from database import DATABASE_URL
+    background_tasks.add_task(run_ai_analysis, doc.id, DATABASE_URL)
+
+    return {"message": "AI analysis re-queued", "document_id": doc.id}
 
 
 @router.delete("/{document_id}")
