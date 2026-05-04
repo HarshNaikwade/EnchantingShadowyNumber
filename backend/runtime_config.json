@@ -1,3 +1,4 @@
 {
-  "ai_provider": "groq"
+  "ai_provider": "groq",
+  "ollama_url": "http://localhost:11434"
 }

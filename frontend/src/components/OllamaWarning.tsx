@@ -1,4 +1,4 @@
-import { AlertTriangle, Wifi, WifiOff, ChevronDown } from 'lucide-react'
+import { AlertTriangle, Wifi, WifiOff, ChevronDown, Pencil, Check, X } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState, useEffect } from 'react'
 import apiClient from '@/lib/api'
@@ -11,12 +11,21 @@ const PROVIDERS = [
 export function OllamaStatusBar() {
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
+  const [editingUrl, setEditingUrl] = useState(false)
+  const [urlInput, setUrlInput] = useState('')
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const urlInputRef = useRef<HTMLInputElement>(null)
 
   const { data: health, isLoading } = useQuery({
     queryKey: ['health'],
     queryFn: apiClient.health,
     refetchInterval: 30000,
+  })
+
+  const { data: ollamaUrlData } = useQuery({
+    queryKey: ['ollamaUrl'],
+    queryFn: apiClient.getOllamaUrl,
+    enabled: health?.ai_provider === 'ollama',
   })
 
   const switchMutation = useMutation({
@@ -26,7 +35,15 @@ export function OllamaStatusBar() {
     },
   })
 
-  // Close dropdown when clicking outside
+  const setUrlMutation = useMutation({
+    mutationFn: (url: string) => apiClient.setOllamaUrl(url),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['health'] })
+      queryClient.invalidateQueries({ queryKey: ['ollamaUrl'] })
+      setEditingUrl(false)
+    },
+  })
+
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -37,17 +54,29 @@ export function OllamaStatusBar() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
+  useEffect(() => {
+    if (editingUrl && urlInputRef.current) {
+      urlInputRef.current.focus()
+      urlInputRef.current.select()
+    }
+  }, [editingUrl])
+
   if (isLoading || !health) return null
 
   const currentProvider = health.ai_provider ?? 'ollama'
   const currentLabel = PROVIDERS.find(p => p.value === currentProvider)?.label ?? currentProvider
   const model = health.ai_model ?? ''
   const connected = health.ai_connected
+  const isOllama = currentProvider === 'ollama'
 
-  const hint =
-    currentProvider === 'groq'
-      ? 'Check your GROQ_API_KEY'
-      : `Not reachable at ${health.ollama_url}`
+  const openUrlEditor = () => {
+    setUrlInput(ollamaUrlData?.url ?? health.ollama_url ?? 'http://localhost:11434')
+    setEditingUrl(true)
+  }
+
+  const saveUrl = () => {
+    if (urlInput.trim()) setUrlMutation.mutate(urlInput.trim())
+  }
 
   return (
     <div className="flex items-center gap-2">
@@ -70,6 +99,7 @@ export function OllamaStatusBar() {
                 onClick={() => {
                   switchMutation.mutate(p.value)
                   setOpen(false)
+                  setEditingUrl(false)
                 }}
                 className={`w-full text-left text-xs px-3 py-2 hover:bg-gray-50 transition-colors flex items-center justify-between ${
                   p.value === currentProvider ? 'font-semibold text-primary' : 'text-gray-700'
@@ -85,16 +115,74 @@ export function OllamaStatusBar() {
         )}
       </div>
 
-      {/* Connection status badge */}
+      {/* Connection status + URL editor */}
       {connected ? (
-        <div className="flex items-center gap-1.5 text-xs text-green-600 bg-green-50 border border-green-200 rounded-md px-2.5 py-1.5">
-          <Wifi className="h-3.5 w-3.5 shrink-0" />
-          <span>Connected{model ? ` — ${model}` : ''}</span>
+        <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5 text-xs text-green-600 bg-green-50 border border-green-200 rounded-md px-2.5 py-1.5">
+            <Wifi className="h-3.5 w-3.5 shrink-0" />
+            <span>Connected{model ? ` — ${model}` : ''}</span>
+          </div>
+          {isOllama && !editingUrl && (
+            <button
+              onClick={openUrlEditor}
+              title="Change Ollama URL"
+              className="p-1.5 text-muted-foreground hover:text-gray-700 rounded hover:bg-gray-100 transition-colors"
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+          )}
         </div>
       ) : (
         <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5">
           <WifiOff className="h-3.5 w-3.5 shrink-0" />
-          <span>{hint} — AI analysis skipped</span>
+          {isOllama ? (
+            <span>
+              Not reachable at{' '}
+              <code className="font-mono font-medium">{health.ollama_url}</code>
+            </span>
+          ) : (
+            <span>Check your GROQ_API_KEY — AI analysis skipped</span>
+          )}
+          {isOllama && !editingUrl && (
+            <button
+              onClick={openUrlEditor}
+              className="ml-1 underline underline-offset-2 font-medium hover:text-amber-900 transition-colors"
+            >
+              Change URL
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Inline URL editor (shown below when editing) */}
+      {isOllama && editingUrl && (
+        <div className="flex items-center gap-1">
+          <input
+            ref={urlInputRef}
+            value={urlInput}
+            onChange={e => setUrlInput(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') saveUrl()
+              if (e.key === 'Escape') setEditingUrl(false)
+            }}
+            placeholder="http://localhost:11434"
+            className="text-xs border border-border rounded px-2 py-1 w-56 focus:outline-none focus:ring-1 focus:ring-primary font-mono"
+          />
+          <button
+            onClick={saveUrl}
+            disabled={setUrlMutation.isPending}
+            className="p-1.5 text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-50"
+            title="Save URL"
+          >
+            <Check className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => setEditingUrl(false)}
+            className="p-1.5 text-gray-400 hover:bg-gray-100 rounded transition-colors"
+            title="Cancel"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
       )}
     </div>
@@ -132,15 +220,16 @@ export function OllamaWarningModal({ isOpen, onClose }: { isOpen: boolean; onClo
             AI_PROVIDER=groq{'\n'}GROQ_API_KEY=gsk_...
           </div>
         ) : (
-          <div className="bg-gray-50 rounded-md p-3 text-xs font-mono text-gray-700 mb-4">
-            ollama serve
-          </div>
-        )}
-        {!isGroq && (
-          <p className="text-xs text-gray-500 mb-4">
-            Make sure Ollama is installed and running on your machine, then try again.
-            You can download it from <span className="font-medium">ollama.ai</span>
-          </p>
+          <>
+            <div className="bg-gray-50 rounded-md p-3 text-xs font-mono text-gray-700 mb-3">
+              ollama serve
+            </div>
+            <p className="text-xs text-gray-500 mb-4">
+              Since this app runs in the cloud, Ollama must be publicly accessible (e.g. via ngrok
+              or Tailscale). Use the <span className="font-medium">Change URL</span> button in the
+              header to point to your Ollama endpoint.
+            </p>
+          </>
         )}
         <button
           onClick={onClose}

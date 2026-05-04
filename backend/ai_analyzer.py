@@ -32,6 +32,15 @@ AI_PROVIDER: str = os.getenv("AI_PROVIDER", "ollama").lower()
 OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "gemma4:latest")
 
+
+def get_ollama_base_url() -> str:
+    """Return the active Ollama base URL (runtime-configurable)."""
+    try:
+        from runtime_config import get_setting
+        return get_setting("ollama_url", OLLAMA_BASE_URL)
+    except Exception:
+        return OLLAMA_BASE_URL
+
 # Groq  (OpenAI-compatible)
 GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
@@ -59,7 +68,7 @@ def get_ai_model() -> str:
 async def check_ollama_connection() -> bool:
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            r = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
+            r = await client.get(f"{get_ollama_base_url()}/api/tags")
             return r.status_code == 200
     except Exception:
         return False
@@ -93,7 +102,7 @@ async def check_ai_connection() -> bool:
 async def list_ollama_models() -> list[str]:
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            r = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
+            r = await client.get(f"{get_ollama_base_url()}/api/tags")
             r.raise_for_status()
             return [m.get("name") for m in r.json().get("models", []) if m.get("name")]
     except Exception:
@@ -135,10 +144,11 @@ async def ollama_generate(
 
     logger.debug("Ollama request → model=%s stream=%s prompt_len=%d", model, use_stream, len(prompt))
 
+    base_url = get_ollama_base_url()
     async with httpx.AsyncClient(timeout=120.0) as client:
         if not use_stream:
             # ── Non-streaming (most reliable) ──────────────────────────────
-            response = await client.post(f"{OLLAMA_BASE_URL}/api/generate", json=payload)
+            response = await client.post(f"{base_url}/api/generate", json=payload)
             response.raise_for_status()
             data = response.json()
             raw = data.get("response", "")
@@ -149,7 +159,7 @@ async def ollama_generate(
 
         # ── Streaming ──────────────────────────────────────────────────────
         output_parts: list[str] = []
-        async with client.stream("POST", f"{OLLAMA_BASE_URL}/api/generate", json=payload) as response:
+        async with client.stream("POST", f"{base_url}/api/generate", json=payload) as response:
             response.raise_for_status()
             async for line in response.aiter_lines():
                 if not line.strip():

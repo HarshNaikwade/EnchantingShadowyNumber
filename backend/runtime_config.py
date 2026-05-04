@@ -12,6 +12,7 @@ _lock = threading.Lock()
 
 _DEFAULTS: dict = {
     "ai_provider": os.getenv("AI_PROVIDER", "ollama"),
+    "ollama_url": os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
 }
 
 

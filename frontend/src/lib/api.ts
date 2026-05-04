@@ -206,6 +206,12 @@ export const apiClient = {
 
   setProvider: (provider: string): Promise<{ provider: string }> =>
     api.post("/settings/provider", { provider }).then((r) => r.data),
+
+  getOllamaUrl: (): Promise<{ url: string }> =>
+    api.get("/settings/ollama-url").then((r) => r.data),
+
+  setOllamaUrl: (url: string): Promise<{ url: string }> =>
+    api.post("/settings/ollama-url", { url }).then((r) => r.data),
 };
 
 export default apiClient;
