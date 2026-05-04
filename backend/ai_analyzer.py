@@ -3,12 +3,12 @@ import logging
 import re
 import httpx
 import os
-from typing import Optional
+from typing import Optional, Callable
 
 logger = logging.getLogger(__name__)
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4:latest")
 
 
 async def check_ollama_connection() -> bool:
@@ -45,7 +45,11 @@ async def resolve_ollama_model(requested: Optional[str] = None) -> Optional[str]
     return models[0]
 
 
-async def ollama_generate(prompt: str, model: str = None) -> str:
+async def ollama_generate(
+    prompt: str,
+    model: str = None,
+    on_chunk: Optional[Callable[[str], None]] = None
+) -> str:
     """Send a prompt to Ollama and return the response."""
     if model is None:
         model = await resolve_ollama_model(OLLAMA_MODEL)
@@ -56,19 +60,42 @@ async def ollama_generate(prompt: str, model: str = None) -> str:
         payload = {
             "model": model,
             "prompt": prompt,
-            "stream": False,
+            "stream": bool(on_chunk),
             "options": {
                 "temperature": 0.1,
                 "num_predict": 2048,
             }
         }
-        response = await client.post(
+        if not on_chunk:
+            response = await client.post(
+                f"{OLLAMA_BASE_URL}/api/generate",
+                json=payload
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data.get("response", "")
+
+        output = ""
+        async with client.stream(
+            "POST",
             f"{OLLAMA_BASE_URL}/api/generate",
             json=payload
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data.get("response", "")
+        ) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                chunk = data.get("response", "")
+                if chunk:
+                    on_chunk(chunk)
+                    output += chunk
+                if data.get("done"):
+                    break
+        return output
 
 
 def extract_json_from_response(text: str) -> Optional[dict]:
@@ -93,7 +120,11 @@ def extract_json_from_response(text: str) -> Optional[dict]:
         return None
 
 
-async def extract_agreement_clauses(text: str, model: str = None) -> list:
+async def extract_agreement_clauses(
+    text: str,
+    model: str = None,
+    on_chunk: Optional[Callable[[str], None]] = None
+) -> list:
     """Step 1: Extract all distinct clauses from the agreement text."""
     prompt = f"""You are a legal document analyzer. Extract all distinct clauses from the following agreement text.
 
@@ -117,7 +148,7 @@ Agreement Text:
 
 Respond ONLY with valid JSON. No explanations outside the JSON structure."""
 
-    response = await ollama_generate(prompt, model=model)
+    response = await ollama_generate(prompt, model=model, on_chunk=on_chunk)
     data = extract_json_from_response(response)
     if data and isinstance(data, dict):
         return data.get("clauses", [])
@@ -126,14 +157,20 @@ Respond ONLY with valid JSON. No explanations outside the JSON structure."""
     return []
 
 
-async def generate_rbi_understanding(clause_text: str, predefined_meaning: str, model: str = None) -> str:
+async def generate_rbi_understanding(
+    clause_text: str,
+    predefined_meaning: Optional[str],
+    model: str = None,
+    on_chunk: Optional[Callable[[str], None]] = None
+) -> str:
     """Step 2: Generate AI understanding of an RBI clause."""
+    predefined = predefined_meaning or "No predefined meaning was provided."
     prompt = f"""You are an RBI (Reserve Bank of India) compliance expert.
 
 Analyze this RBI regulatory clause and provide a detailed AI understanding:
 
 RBI Clause: {clause_text}
-Predefined Meaning: {predefined_meaning}
+Predefined Meaning: {predefined}
 
 Respond with a JSON object:
 {{
@@ -142,11 +179,11 @@ Respond with a JSON object:
 
 Respond ONLY with valid JSON."""
 
-    response = await ollama_generate(prompt, model=model)
+    response = await ollama_generate(prompt, model=model, on_chunk=on_chunk)
     data = extract_json_from_response(response)
     if data and isinstance(data, dict):
-        return data.get("ai_understanding", predefined_meaning)
-    return predefined_meaning
+        return data.get("ai_understanding", predefined)
+    return predefined
 
 
 async def check_compliance(
@@ -154,7 +191,8 @@ async def check_compliance(
     rbi_clause_text: str,
     rbi_clause_id: int,
     document_type: str = "Agreement",
-    model: str = None
+    model: str = None,
+    on_chunk: Optional[Callable[[str], None]] = None
 ) -> dict:
     """Step 3: Check compliance of agreement clauses against an RBI clause."""
 
@@ -196,7 +234,7 @@ Rules:
 
 Respond ONLY with valid JSON."""
 
-    response = await ollama_generate(prompt, model=model)
+    response = await ollama_generate(prompt, model=model, on_chunk=on_chunk)
     data = extract_json_from_response(response)
 
     if data and isinstance(data, dict):

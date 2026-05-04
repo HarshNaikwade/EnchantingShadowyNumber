@@ -17,7 +17,8 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { format } from "date-fns";
-import apiClient, { type Document } from "@/lib/api";
+import apiClient, { type Document, type DocumentProgress } from "@/lib/api";
+import { logError, logEvent } from "@/lib/debugLogger";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -74,20 +75,32 @@ function DocumentCard({
 
   const currentStatus = status?.status || doc.processing_status;
 
+  const { data: progress } = useQuery<DocumentProgress>({
+    queryKey: ["docProgress", doc.id],
+    queryFn: () => apiClient.getDocumentProgress(doc.id),
+    refetchInterval:
+      currentStatus === "processing" || currentStatus === "queued" ? 3000 : false,
+    retry: false,
+  });
+
   const deleteMutation = useMutation({
     mutationFn: () => apiClient.deleteDocument(doc.id),
     onSuccess: () => {
+      logEvent("Document deleted", { documentId: doc.id });
       queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
     },
+    onError: (error) => logError("Failed to delete document", error),
   });
 
   const updateDatesMutation = useMutation({
     mutationFn: () =>
       apiClient.updateDocumentDates(doc.id, editEffective, editCreation),
     onSuccess: () => {
+      logEvent("Document dates updated", { documentId: doc.id });
       setEditingDates(false);
       queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
     },
+    onError: (error) => logError("Failed to update document dates", error),
   });
 
   const reportUrl = apiClient.getDocumentReportUrl(sessionId, doc.id);
@@ -201,10 +214,38 @@ function DocumentCard({
                   variant="ghost"
                   size="sm"
                   className="h-6 p-1"
-                  onClick={() => refetchStatus()}
+                  onClick={() => {
+                    logEvent("Status refresh requested", { documentId: doc.id });
+                    refetchStatus();
+                  }}
                 >
                   <RefreshCw className="h-3 w-3" />
                 </Button>
+              </div>
+            )}
+
+            {progress && (currentStatus === "processing" || currentStatus === "queued") && (
+              <div className="ml-auto text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded px-3 py-2 w-full">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold">AI step:</span>
+                  <span className="capitalize">{progress.step.replace(/_/g, " ")}</span>
+                  {progress.stalled && (
+                    <span className="text-amber-700">
+                      No response received for {progress.last_chunk_age ?? "?"}s
+                    </span>
+                  )}
+                </div>
+                {progress.message && (
+                  <div className="text-xs text-muted-foreground mt-1">{progress.message}</div>
+                )}
+                {progress.response_preview && (
+                  <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-[11px] bg-white border border-slate-200 rounded p-2">
+                    {progress.response_preview}
+                  </pre>
+                )}
+                {progress.error && (
+                  <div className="mt-2 text-xs text-destructive">{progress.error}</div>
+                )}
               </div>
             )}
 
@@ -256,6 +297,7 @@ export default function AnalysisWorkspace() {
     if (acceptedFiles.length > 0) {
       setSelectedFile(acceptedFiles[0]);
       setUploadError(null);
+      logEvent("File selected", { name: acceptedFiles[0].name });
     }
   }, []);
 
@@ -274,13 +316,16 @@ export default function AnalysisWorkspace() {
     setUploading(true);
     setUploadError(null);
     try {
+      logEvent("Upload started", { sessionId, fileName: selectedFile.name });
       await apiClient.uploadDocument(sessionId, selectedFile, docType);
       setSelectedFile(null);
+      logEvent("Upload completed", { sessionId, fileType: docType });
       queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
     } catch (err: any) {
       setUploadError(
         err.response?.data?.detail || "Upload failed. Please try again.",
       );
+      logError("Upload failed", err);
     } finally {
       setUploading(false);
     }

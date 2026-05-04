@@ -1,6 +1,7 @@
 import os
 import uuid
 import logging
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -16,6 +17,7 @@ from ai_analyzer import (
     resolve_ollama_model,
     OLLAMA_MODEL,
 )
+from progress import start as progress_start, update as progress_update, append_chunk, set_error, complete as progress_complete, get as get_progress
 
 router = APIRouter(prefix="/api/document", tags=["documents"])
 logger = logging.getLogger(__name__)
@@ -32,7 +34,7 @@ MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "50"))
 MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 
 
-async def run_ai_analysis(document_id: int, db_url: str):
+async def _run_ai_analysis_async(document_id: int, db_url: str):
     """Background task: Run AI compliance analysis on a document."""
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
@@ -42,6 +44,8 @@ async def run_ai_analysis(document_id: int, db_url: str):
     db = SessionLocal()
 
     try:
+        logger.info("Starting AI analysis for document %s", document_id)
+        progress_start(document_id, "starting", "Initializing analysis")
         doc = db.query(Document).filter(Document.id == document_id).first()
         if not doc:
             return
@@ -52,12 +56,14 @@ async def run_ai_analysis(document_id: int, db_url: str):
         if not doc.extracted_text:
             doc.processing_status = "failed"
             db.commit()
+            set_error(document_id, "Document has no extracted text")
             return
 
         rbi_clauses = db.query(RBIClause).all()
         if not rbi_clauses:
             doc.processing_status = "completed"
             db.commit()
+            progress_complete(document_id)
             return
 
         is_connected = await check_ollama_connection()
@@ -65,6 +71,7 @@ async def run_ai_analysis(document_id: int, db_url: str):
             logger.warning("Ollama not reachable, skipping AI analysis")
             doc.processing_status = "completed_no_ai"
             db.commit()
+            set_error(document_id, "Ollama not reachable")
             return
 
         resolved_model = await resolve_ollama_model(OLLAMA_MODEL)
@@ -72,19 +79,30 @@ async def run_ai_analysis(document_id: int, db_url: str):
             logger.warning("No Ollama models available, skipping AI analysis")
             doc.processing_status = "completed_no_ai"
             db.commit()
+            set_error(document_id, "No Ollama models available")
             return
 
-        agreement_clauses = await extract_agreement_clauses(doc.extracted_text, model=resolved_model)
-
+        # Step 1: Ensure RBI clauses have AI understanding.
+        progress_update(document_id, "rbi_understanding", "Analyzing RBI clauses")
         for rbi_clause in rbi_clauses:
-            if not rbi_clause.ai_understanding and rbi_clause.predefined_meaning:
+            if not rbi_clause.ai_understanding:
+                progress_update(document_id, message=f"Analyzing RBI clause {rbi_clause.id}")
                 understanding = await generate_rbi_understanding(
                     rbi_clause.clause_text,
                     rbi_clause.predefined_meaning,
-                    model=resolved_model
+                    model=resolved_model,
+                    on_chunk=lambda chunk: append_chunk(document_id, chunk)
                 )
                 rbi_clause.ai_understanding = understanding
                 db.commit()
+
+        # Step 2: Extract agreement clauses from the document.
+        progress_update(document_id, "extract_agreement", "Extracting agreement clauses")
+        agreement_clauses = await extract_agreement_clauses(
+            doc.extracted_text,
+            model=resolved_model,
+            on_chunk=lambda chunk: append_chunk(document_id, chunk)
+        )
 
         existing = db.query(ComplianceResult).filter(
             ComplianceResult.document_id == document_id
@@ -95,13 +113,17 @@ async def run_ai_analysis(document_id: int, db_url: str):
             ).delete()
             db.commit()
 
+        # Step 3: Check compliance for each RBI clause.
+        progress_update(document_id, "check_compliance", "Checking compliance")
         for rbi_clause in rbi_clauses:
+            progress_update(document_id, message=f"Checking RBI clause {rbi_clause.id}")
             result = await check_compliance(
                 agreement_clauses,
                 rbi_clause.clause_text,
                 rbi_clause.id,
                 doc.file_type,
-                model=resolved_model
+                model=resolved_model,
+                on_chunk=lambda chunk: append_chunk(document_id, chunk)
             )
 
             compliance = ComplianceResult(
@@ -122,15 +144,28 @@ async def run_ai_analysis(document_id: int, db_url: str):
         if session:
             session.status = "completed"
         db.commit()
+        logger.info("AI analysis completed for document %s", document_id)
+        progress_complete(document_id)
 
-    except Exception as e:
-        logger.error(f"AI analysis failed for document {document_id}: {e}")
+    except Exception:
+        logger.exception("AI analysis failed for document %s", document_id)
         doc = db.query(Document).filter(Document.id == document_id).first()
         if doc:
             doc.processing_status = "failed"
             db.commit()
+        set_error(document_id, "AI analysis failed. Check backend logs for details.")
     finally:
         db.close()
+
+
+def run_ai_analysis(document_id: int, db_url: str):
+    """Sync wrapper to run AI analysis in background tasks."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(_run_ai_analysis_async(document_id, db_url))
+    else:
+        loop.create_task(_run_ai_analysis_async(document_id, db_url))
 
 
 @router.post("/upload")
@@ -195,6 +230,8 @@ async def upload_document(
     db.commit()
     db.refresh(doc)
 
+    logger.info("Uploaded document %s for session %s (%s)", doc.id, session_id, doc.original_filename)
+
     from database import DATABASE_URL
     background_tasks.add_task(run_ai_analysis, doc.id, DATABASE_URL)
 
@@ -224,6 +261,7 @@ def update_document_dates(
     if creation_date is not None:
         doc.creation_date = creation_date
     db.commit()
+    logger.info("Updated dates for document %s", document_id)
     return {"message": "Dates updated successfully"}
 
 
@@ -233,6 +271,14 @@ def get_document_status(document_id: int, db: Session = Depends(get_db)):
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     return {"document_id": document_id, "status": doc.processing_status}
+
+
+@router.get("/{document_id}/progress")
+def get_document_progress(document_id: int):
+    progress = get_progress(document_id)
+    if not progress:
+        raise HTTPException(status_code=404, detail="No progress available")
+    return progress
 
 
 @router.post("/{document_id}/rerun")
@@ -253,6 +299,8 @@ def rerun_analysis(
         session.status = "processing"
     db.commit()
 
+    logger.info("Re-queued AI analysis for document %s", doc.id)
+
     from database import DATABASE_URL
     background_tasks.add_task(run_ai_analysis, doc.id, DATABASE_URL)
 
@@ -271,4 +319,5 @@ def delete_document(document_id: int, db: Session = Depends(get_db)):
 
     db.delete(doc)
     db.commit()
+    logger.info("Deleted document %s", document_id)
     return {"message": "Document deleted successfully"}

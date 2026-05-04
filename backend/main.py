@@ -7,10 +7,12 @@ from contextlib import asynccontextmanager
 from database import engine, Base
 from models import RBIClause
 from database import SessionLocal
-from routes import analysis, documents, reports, clauses
+from routes import analysis, documents, reports, clauses, debug
+from log_buffer import buffer_handler
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+logging.getLogger().addHandler(buffer_handler)
 
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -61,6 +63,7 @@ app.include_router(analysis.router)
 app.include_router(documents.router)
 app.include_router(reports.router)
 app.include_router(clauses.router)
+app.include_router(debug.router)
 
 
 @app.get("/api/health")

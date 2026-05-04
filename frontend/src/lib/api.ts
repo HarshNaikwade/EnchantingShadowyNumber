@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { logError, logEvent } from './debugLogger'
 
 const api = axios.create({
   baseURL: '/api',
@@ -65,6 +66,31 @@ export interface RBIClausePayload {
   category?: string
 }
 
+export interface BackendLogEntry {
+  ts: string
+  level: string
+  logger: string
+  message: string
+}
+
+export interface BackendLogResponse {
+  logs: BackendLogEntry[]
+}
+
+export interface DocumentProgress {
+  document_id: number
+  step: string
+  message: string
+  response_preview: string
+  started_at: string
+  updated_at: string
+  last_chunk_at: string | null
+  last_chunk_age: number | null
+  stalled: boolean
+  error: string | null
+  done: boolean
+}
+
 export const apiClient = {
   health: (): Promise<HealthStatus> =>
     api.get('/health').then(r => r.data),
@@ -80,6 +106,9 @@ export const apiClient = {
 
   deleteClause: (id: number): Promise<void> =>
     api.delete(`/clauses/${id}`).then(r => r.data),
+
+  analyzeClauses: (force = false): Promise<{ message: string; force: boolean }> =>
+    api.post(`/clauses/analyze?force=${force}`).then(r => r.data),
 
   listSessions: (): Promise<AnalysisSession[]> =>
     api.get('/analysis/').then(r => r.data),
@@ -121,6 +150,9 @@ export const apiClient = {
   getDocumentStatus: (documentId: number): Promise<{ document_id: number; status: string }> =>
     api.get(`/document/${documentId}/status`).then(r => r.data),
 
+  getDocumentProgress: (documentId: number): Promise<DocumentProgress> =>
+    api.get(`/document/${documentId}/progress`).then(r => r.data),
+
   updateDocumentDates: (
     documentId: number,
     effectiveDate?: string,
@@ -140,6 +172,40 @@ export const apiClient = {
 
   getDocumentReportUrl: (sessionId: number, documentId: number): string =>
     `/api/report/${sessionId}/document/${documentId}`,
+
+  getBackendLogs: (limit = 200): Promise<BackendLogResponse> =>
+    api.get(`/debug/logs?limit=${limit}`).then(r => r.data),
 }
 
 export default apiClient
+
+api.interceptors.request.use(
+  (config) => {
+    logEvent('API request started', { method: config.method, url: config.url })
+    return config
+  },
+  (error) => {
+    logError('API request error', error)
+    return Promise.reject(error)
+  }
+)
+
+api.interceptors.response.use(
+  (response) => {
+    logEvent('API request completed', {
+      method: response.config.method,
+      url: response.config.url,
+      status: response.status,
+    })
+    return response
+  },
+  (error) => {
+    logError('API response error', {
+      url: error?.config?.url,
+      status: error?.response?.status,
+      message: error?.message,
+      detail: error?.response?.data,
+    })
+    return Promise.reject(error)
+  }
+)

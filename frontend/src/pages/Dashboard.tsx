@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { Plus, FileText, Calendar, Trash2, ChevronRight, Shield, Loader2, Settings2 } from 'lucide-react'
 import { format } from 'date-fns'
 import apiClient from '@/lib/api'
+import { logError, logEvent } from '@/lib/debugLogger'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -33,20 +34,27 @@ export default function Dashboard() {
   const createMutation = useMutation({
     mutationFn: (title: string) => apiClient.createSession(title),
     onSuccess: (session) => {
+      logEvent('Session created', { sessionId: session.id })
       queryClient.invalidateQueries({ queryKey: ['sessions'] })
       setShowCreate(false)
       setNewTitle('')
       navigate(`/analysis/${session.id}`)
     },
+    onError: (error) => logError('Failed to create session', error),
   })
 
   const deleteMutation = useMutation({
     mutationFn: apiClient.deleteSession,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sessions'] }),
+    onSuccess: () => {
+      logEvent('Session deleted')
+      queryClient.invalidateQueries({ queryKey: ['sessions'] })
+    },
+    onError: (error) => logError('Failed to delete session', error),
   })
 
   const handleCreate = () => {
     if (newTitle.trim()) {
+      logEvent('Create session requested', { title: newTitle.trim() })
       createMutation.mutate(newTitle.trim())
     }
   }

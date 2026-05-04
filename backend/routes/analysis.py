@@ -1,4 +1,5 @@
 import os
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -9,6 +10,7 @@ from database import get_db
 from models import AnalysisSession, Document, ComplianceResult, RBIClause
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
+logger = logging.getLogger(__name__)
 
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./uploads")
 
@@ -87,6 +89,7 @@ def create_session(request: CreateSessionRequest, db: Session = Depends(get_db))
     db.commit()
     db.refresh(session)
     doc_count = db.query(Document).filter(Document.session_id == session.id).count()
+    logger.info("Created session %s with title '%s'", session.id, session.title)
     return SessionResponse(
         id=session.id,
         title=session.title,
@@ -152,4 +155,5 @@ def delete_session(session_id: int, db: Session = Depends(get_db)):
             os.remove(file_path)
     db.delete(session)
     db.commit()
+    logger.info("Deleted session %s", session_id)
     return {"message": "Session deleted successfully"}

@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Trash2, Pencil, Shield, ArrowLeft, Loader2, Check, X } from 'lucide-react'
 import apiClient, { RBIClause, RBIClausePayload } from '@/lib/api'
+import { logError, logEvent } from '@/lib/debugLogger'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -36,36 +37,74 @@ export default function RBIClausesSettings() {
   const [editing, setEditing] = useState<RBIClause | null>(null)
   const [form, setForm] = useState<RBIClausePayload>(emptyForm())
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
+  const [polling, setPolling] = useState(false)
+  const [pollTimedOut, setPollTimedOut] = useState(false)
 
   const { data: clauses = [], isLoading } = useQuery({
     queryKey: ['clauses'],
     queryFn: apiClient.listClauses,
+    refetchInterval: polling ? 5000 : false,
   })
 
   const createMutation = useMutation({
     mutationFn: apiClient.createClause,
     onSuccess: () => {
+      logEvent('RBI clause created')
       queryClient.invalidateQueries({ queryKey: ['clauses'] })
       closeDialog()
     },
+    onError: (error) => logError('Failed to create RBI clause', error),
   })
 
   const updateMutation = useMutation({
     mutationFn: ({ id, payload }: { id: number; payload: Partial<RBIClausePayload> }) =>
       apiClient.updateClause(id, payload),
     onSuccess: () => {
+      logEvent('RBI clause updated')
       queryClient.invalidateQueries({ queryKey: ['clauses'] })
       closeDialog()
     },
+    onError: (error) => logError('Failed to update RBI clause', error),
   })
 
   const deleteMutation = useMutation({
     mutationFn: apiClient.deleteClause,
     onSuccess: () => {
+      logEvent('RBI clause deleted')
       queryClient.invalidateQueries({ queryKey: ['clauses'] })
       setDeleteConfirm(null)
     },
+    onError: (error) => logError('Failed to delete RBI clause', error),
   })
+
+  const analyzeMutation = useMutation({
+    mutationFn: (force: boolean) => apiClient.analyzeClauses(force),
+    onSuccess: (data) => {
+      logEvent('RBI clause analysis queued', { force: data.force })
+      setPolling(true)
+      setPollTimedOut(false)
+    },
+    onError: (error) => logError('Failed to queue RBI clause analysis', error),
+  })
+
+  const isAnalysisComplete = clauses.length > 0 && clauses.every((c) => Boolean(c.ai_understanding))
+
+  useEffect(() => {
+    if (polling && isAnalysisComplete) {
+      setPolling(false)
+      logEvent('RBI clause analysis completed')
+    }
+  }, [polling, isAnalysisComplete])
+
+  useEffect(() => {
+    if (!polling) return
+    const timeout = window.setTimeout(() => {
+      setPolling(false)
+      setPollTimedOut(true)
+      logEvent('RBI clause analysis polling timed out')
+    }, 180000)
+    return () => window.clearTimeout(timeout)
+  }, [polling])
 
   const openCreate = () => {
     setEditing(null)
@@ -97,8 +136,10 @@ export default function RBIClausesSettings() {
     }
     if (!payload.clause_text) return
     if (editing) {
+      logEvent('RBI clause update requested', { clauseId: editing.id })
       updateMutation.mutate({ id: editing.id, payload })
     } else {
+      logEvent('RBI clause create requested')
       createMutation.mutate(payload)
     }
   }
@@ -137,11 +178,34 @@ export default function RBIClausesSettings() {
             <p className="text-muted-foreground mt-1">
               Define the global set of RBI clauses used across all compliance analyses.
             </p>
+            {pollTimedOut && !isAnalysisComplete && (
+              <p className="text-xs text-amber-700 mt-2">
+                Analysis is taking longer than expected. Check Debug Logs for backend errors or retry analysis.
+              </p>
+            )}
           </div>
-          <Button onClick={openCreate}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Clause
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => analyzeMutation.mutate(false)}
+              disabled={analyzeMutation.isPending}
+            >
+              {analyzeMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Analyze Clauses
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => analyzeMutation.mutate(true)}
+              disabled={analyzeMutation.isPending}
+            >
+              {analyzeMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Force Re-Analyze
+            </Button>
+            <Button onClick={openCreate}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Clause
+            </Button>
+          </div>
         </div>
 
         {isLoading ? (
@@ -171,6 +235,12 @@ export default function RBIClausesSettings() {
                         {clause.category && (
                           <Badge variant="secondary" className="text-xs shrink-0">
                             {clause.category}
+                          </Badge>
+                        )}
+                        {polling && !clause.ai_understanding && (
+                          <Badge variant="review" className="text-xs shrink-0 flex items-center gap-1">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Analyzing
                           </Badge>
                         )}
                         <span className="text-xs text-muted-foreground">#{clause.id}</span>
