@@ -16,7 +16,7 @@ from ai_analyzer import (
     check_compliance,
     resolve_ollama_model,
     get_ai_model,
-    AI_PROVIDER,
+    get_active_provider,
     OLLAMA_MODEL,
 )
 from progress import start as progress_start, update as progress_update, append_chunk, set_error, complete as progress_complete, get as get_progress
@@ -55,35 +55,40 @@ async def _run_ai_analysis_async(document_id: int, db_url: str):
         doc.processing_status = "processing"
         db.commit()
 
-        if not doc.extracted_text:
-            doc.processing_status = "failed"
+        def _set_doc_status(status: str, session_status: str = None):
+            doc.processing_status = status
+            if session_status:
+                sess = db.query(AnalysisSession).filter(AnalysisSession.id == doc.session_id).first()
+                if sess:
+                    sess.status = session_status
             db.commit()
+
+        if not doc.extracted_text:
+            _set_doc_status("failed", "failed")
             set_error(document_id, "Document has no extracted text")
             return
 
         rbi_clauses = db.query(RBIClause).all()
         if not rbi_clauses:
-            doc.processing_status = "completed"
-            db.commit()
+            _set_doc_status("completed", "completed")
             progress_complete(document_id)
             return
 
+        provider = get_active_provider()
         is_connected = await check_ai_connection()
         if not is_connected:
-            logger.warning("%s not reachable, skipping AI analysis", AI_PROVIDER.upper())
-            doc.processing_status = "completed_no_ai"
-            db.commit()
-            set_error(document_id, f"{AI_PROVIDER.upper()} not reachable")
+            logger.warning("%s not reachable, skipping AI analysis", provider.upper())
+            _set_doc_status("completed_no_ai", "completed_no_ai")
+            set_error(document_id, f"{provider.upper()} not reachable")
             return
 
-        if AI_PROVIDER == "groq":
+        if provider == "groq":
             resolved_model = get_ai_model()
         else:
             resolved_model = await resolve_ollama_model(OLLAMA_MODEL)
             if not resolved_model:
                 logger.warning("No Ollama models available, skipping AI analysis")
-                doc.processing_status = "completed_no_ai"
-                db.commit()
+                _set_doc_status("completed_no_ai", "completed_no_ai")
                 set_error(document_id, "No Ollama models available")
                 return
 
@@ -157,6 +162,9 @@ async def _run_ai_analysis_async(document_id: int, db_url: str):
         doc = db.query(Document).filter(Document.id == document_id).first()
         if doc:
             doc.processing_status = "failed"
+            sess = db.query(AnalysisSession).filter(AnalysisSession.id == doc.session_id).first()
+            if sess:
+                sess.status = "failed"
             db.commit()
         set_error(document_id, "AI analysis failed. Check backend logs for details.")
     finally:

@@ -24,9 +24,10 @@ interface Props {
   sessionId: number
   documentId: number
   rbiClauses: RBIClause[]
+  isComplete?: boolean
 }
 
-export function ComplianceTables({ sessionId, documentId, rbiClauses }: Props) {
+export function ComplianceTables({ sessionId, documentId, rbiClauses, isComplete = false }: Props) {
   const [search1, setSearch1] = useState('')
   const [search2, setSearch2] = useState('')
   const [search3, setSearch3] = useState('')
@@ -36,7 +37,7 @@ export function ComplianceTables({ sessionId, documentId, rbiClauses }: Props) {
   const { data: results = [], isLoading } = useQuery({
     queryKey: ['results', sessionId, documentId],
     queryFn: () => apiClient.getDocumentResults(sessionId, documentId),
-    refetchInterval: 5000,
+    refetchInterval: isComplete ? false : 5000,
   })
 
   const filteredRBI = useMemo(() =>

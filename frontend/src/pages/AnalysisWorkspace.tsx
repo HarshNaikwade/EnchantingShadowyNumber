@@ -37,6 +37,8 @@ import { OllamaStatusBar } from "@/components/OllamaWarning";
 
 const DOC_TYPES = ["Agreement", "Amendment", "Addendum", "MOU"];
 
+const DONE_STATUSES = new Set(["completed", "failed", "completed_no_ai"]);
+
 const statusBadge: Record<string, string> = {
   completed: "success",
   processing: "warning",
@@ -66,22 +68,19 @@ function DocumentCard({
   const { data: status, refetch: refetchStatus } = useQuery({
     queryKey: ["docStatus", doc.id],
     queryFn: () => apiClient.getDocumentStatus(doc.id),
-    refetchInterval:
-      doc.processing_status !== "completed" &&
-      doc.processing_status !== "failed"
-        ? 3000
-        : false,
+    refetchInterval: (query) => {
+      const s = (query.state.data as { status: string } | undefined)?.status ?? doc.processing_status;
+      return DONE_STATUSES.has(s) ? false : 3000;
+    },
   });
 
-  const currentStatus = status?.status || doc.processing_status;
+  const currentStatus = status?.status ?? doc.processing_status;
+  const isDone = DONE_STATUSES.has(currentStatus);
 
   const { data: progress } = useQuery<DocumentProgress>({
     queryKey: ["docProgress", doc.id],
     queryFn: () => apiClient.getDocumentProgress(doc.id),
-    refetchInterval:
-      currentStatus === "processing" || currentStatus === "queued"
-        ? 3000
-        : false,
+    refetchInterval: !isDone && (currentStatus === "processing" || currentStatus === "queued") ? 3000 : false,
     retry: false,
   });
 
@@ -92,6 +91,18 @@ function DocumentCard({
       queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
     },
     onError: (error) => logError("Failed to delete document", error),
+  });
+
+  const rerunMutation = useMutation({
+    mutationFn: () => apiClient.rerunDocument(doc.id),
+    onSuccess: () => {
+      logEvent("AI analysis re-queued", { documentId: doc.id });
+      queryClient.invalidateQueries({ queryKey: ["docStatus", doc.id] });
+      queryClient.invalidateQueries({ queryKey: ["docProgress", doc.id] });
+      queryClient.invalidateQueries({ queryKey: ["results", sessionId, doc.id] });
+      queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
+    },
+    onError: (error) => logError("Failed to re-run analysis", error),
   });
 
   const updateDatesMutation = useMutation({
@@ -265,8 +276,46 @@ function DocumentCard({
             {currentStatus === "completed_no_ai" && (
               <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-1.5 ml-auto">
                 <AlertCircle className="h-3.5 w-3.5" />
-                Ollama was not connected during analysis. Start Ollama and
-                re-upload for AI insights.
+                AI provider was not reachable during analysis.
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 px-2 text-xs ml-1"
+                  disabled={rerunMutation.isPending}
+                  onClick={() => rerunMutation.mutate()}
+                >
+                  {rerunMutation.isPending ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <>
+                      <RefreshCw className="h-3 w-3 mr-1" />
+                      Re-run Analysis
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
+
+            {currentStatus === "failed" && (
+              <div className="flex items-center gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded px-3 py-1.5 ml-auto">
+                <AlertCircle className="h-3.5 w-3.5" />
+                Analysis failed.
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 px-2 text-xs ml-1"
+                  disabled={rerunMutation.isPending}
+                  onClick={() => rerunMutation.mutate()}
+                >
+                  {rerunMutation.isPending ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <>
+                      <RefreshCw className="h-3 w-3 mr-1" />
+                      Re-run Analysis
+                    </>
+                  )}
+                </Button>
               </div>
             )}
           </div>
@@ -276,6 +325,7 @@ function DocumentCard({
               sessionId={sessionId}
               documentId={doc.id}
               rbiClauses={rbiClauses}
+              isComplete={isDone}
             />
           </div>
         </div>
@@ -298,7 +348,15 @@ export default function AnalysisWorkspace() {
   const { data: session, isLoading } = useQuery({
     queryKey: ["session", sessionId],
     queryFn: () => apiClient.getSession(sessionId),
-    refetchInterval: 5000,
+    refetchInterval: (query) => {
+      const data = query.state.data as typeof session | undefined;
+      if (!data) return 5000;
+      const sessionDone = DONE_STATUSES.has(data.status);
+      const allDocsDone = data.documents.every((d) =>
+        DONE_STATUSES.has(d.processing_status)
+      );
+      return sessionDone && allDocsDone ? false : 5000;
+    },
   });
 
   const { data: rbiClauses = [] } = useQuery({

@@ -198,6 +198,9 @@ export const apiClient = {
   getBackendLogs: (limit = 200): Promise<BackendLogResponse> =>
     api.get(`/debug/logs?limit=${limit}`).then((r) => r.data),
 
+  rerunDocument: (documentId: number): Promise<{ message: string; document_id: number }> =>
+    api.post(`/document/${documentId}/rerun`).then((r) => r.data),
+
   getProvider: (): Promise<{ provider: string }> =>
     api.get("/settings/provider").then((r) => r.data),
 
