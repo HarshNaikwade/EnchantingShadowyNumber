@@ -1,3 +1,18 @@
+"""
+AI provider abstraction layer.
+Supports Ollama (local) and Groq (cloud) via the AI_PROVIDER env var.
+
+Quick-start:
+  Ollama (default):
+    AI_PROVIDER=ollama
+    OLLAMA_BASE_URL=http://localhost:11434
+    OLLAMA_MODEL=gemma3:latest
+
+  Groq:
+    AI_PROVIDER=groq
+    GROQ_API_KEY=gsk_...
+    GROQ_MODEL=llama-3.3-70b-versatile
+"""
 import json
 import logging
 import re
@@ -7,99 +22,228 @@ from typing import Optional, Callable
 
 logger = logging.getLogger(__name__)
 
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4:latest")
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+AI_PROVIDER: str = os.getenv("AI_PROVIDER", "ollama").lower()
+
+# Ollama
+OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "gemma3:latest")
+
+# Groq  (OpenAI-compatible)
+GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
 
 
+# ---------------------------------------------------------------------------
+# Provider helpers
+# ---------------------------------------------------------------------------
+def get_active_provider() -> str:
+    return AI_PROVIDER
+
+
+def get_ai_model() -> str:
+    return GROQ_MODEL if AI_PROVIDER == "groq" else OLLAMA_MODEL
+
+
+# ---------------------------------------------------------------------------
+# Connection checks
+# ---------------------------------------------------------------------------
 async def check_ollama_connection() -> bool:
-    """Check if Ollama is reachable."""
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
-            return response.status_code == 200
+            r = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
+            return r.status_code == 200
     except Exception:
         return False
 
 
+async def check_groq_connection() -> bool:
+    if not GROQ_API_KEY:
+        logger.warning("GROQ_API_KEY is not set.")
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get(
+                f"{GROQ_BASE_URL}/models",
+                headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+            )
+            return r.status_code == 200
+    except Exception:
+        return False
+
+
+async def check_ai_connection() -> bool:
+    """Check whether the active AI provider is reachable."""
+    if AI_PROVIDER == "groq":
+        return await check_groq_connection()
+    return await check_ollama_connection()
+
+
+# ---------------------------------------------------------------------------
+# Ollama: list / resolve models
+# ---------------------------------------------------------------------------
 async def list_ollama_models() -> list[str]:
-    """Return available Ollama model names."""
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
-            response.raise_for_status()
-            data = response.json()
-            return [m.get("name") for m in data.get("models", []) if m.get("name")]
+            r = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
+            r.raise_for_status()
+            return [m.get("name") for m in r.json().get("models", []) if m.get("name")]
     except Exception:
         return []
 
 
 async def resolve_ollama_model(requested: Optional[str] = None) -> Optional[str]:
-    """Resolve a usable model; fall back to the first available model if needed."""
     models = await list_ollama_models()
     if not models:
         return None
     if requested and requested in models:
         return requested
     if requested:
-        logger.warning("Requested Ollama model '%s' not found. Using '%s'.", requested, models[0])
+        logger.warning("Ollama model '%s' not found; falling back to '%s'.", requested, models[0])
     return models[0]
 
 
+# ---------------------------------------------------------------------------
+# Ollama generate  (non-streaming by default; streaming only when on_chunk given)
+# ---------------------------------------------------------------------------
 async def ollama_generate(
     prompt: str,
-    model: str = None,
-    on_chunk: Optional[Callable[[str], None]] = None
+    model: Optional[str] = None,
+    on_chunk: Optional[Callable[[str], None]] = None,
 ) -> str:
-    """Send a prompt to Ollama and return the response."""
     if model is None:
         model = await resolve_ollama_model(OLLAMA_MODEL)
     if not model:
-        logger.warning("No Ollama models available. Skipping AI analysis.")
+        logger.warning("No Ollama models available.")
         return ""
+
+    use_stream = bool(on_chunk)
+    payload = {
+        "model": model,
+        "prompt": prompt,
+        "stream": use_stream,
+        "options": {"temperature": 0.1, "num_predict": 2048},
+    }
+
+    logger.debug("Ollama request → model=%s stream=%s prompt_len=%d", model, use_stream, len(prompt))
+
     async with httpx.AsyncClient(timeout=120.0) as client:
-        payload = {
-            "model": model,
-            "prompt": prompt,
-            "stream": bool(on_chunk),
-            "options": {
-                "temperature": 0.1,
-                "num_predict": 2048,
-            }
-        }
-        if not on_chunk:
-            response = await client.post(
-                f"{OLLAMA_BASE_URL}/api/generate",
-                json=payload
-            )
+        if not use_stream:
+            # ── Non-streaming (most reliable) ──────────────────────────────
+            response = await client.post(f"{OLLAMA_BASE_URL}/api/generate", json=payload)
             response.raise_for_status()
             data = response.json()
-            return data.get("response", "")
+            raw = data.get("response", "")
+            logger.debug("Ollama raw response (%d chars): %s", len(raw), raw[:300])
+            if not raw:
+                logger.warning("Ollama returned an empty 'response' field. Full payload: %s", json.dumps(data)[:500])
+            return raw
 
-        output = ""
-        async with client.stream(
-            "POST",
-            f"{OLLAMA_BASE_URL}/api/generate",
-            json=payload
-        ) as response:
+        # ── Streaming ──────────────────────────────────────────────────────
+        output_parts: list[str] = []
+        async with client.stream("POST", f"{OLLAMA_BASE_URL}/api/generate", json=payload) as response:
             response.raise_for_status()
             async for line in response.aiter_lines():
-                if not line:
+                if not line.strip():
                     continue
                 try:
                     data = json.loads(line)
                 except json.JSONDecodeError:
+                    logger.debug("Ollama stream: skipping non-JSON line: %s", line[:100])
                     continue
                 chunk = data.get("response", "")
                 if chunk:
                     on_chunk(chunk)
-                    output += chunk
+                    output_parts.append(chunk)
                 if data.get("done"):
                     break
+
+        output = "".join(output_parts)
+        logger.debug("Ollama stream complete (%d chars): %s", len(output), output[:300])
+        if not output:
+            logger.warning("Ollama streaming produced no output for model=%s", model)
         return output
 
 
-def extract_json_from_response(text: str) -> Optional[dict]:
-    """Extract JSON from Ollama response, handling markdown code blocks."""
+# ---------------------------------------------------------------------------
+# Groq generate  (OpenAI-compatible chat completions, always non-streaming)
+# ---------------------------------------------------------------------------
+async def groq_generate(
+    prompt: str,
+    model: Optional[str] = None,
+    on_chunk: Optional[Callable[[str], None]] = None,
+) -> str:
+    if not GROQ_API_KEY:
+        logger.error("GROQ_API_KEY is not set. Cannot call Groq.")
+        return ""
+
+    model = model or GROQ_MODEL
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.1,
+        "max_tokens": 2048,
+        "stream": False,
+    }
+
+    logger.debug("Groq request → model=%s prompt_len=%d", model, len(prompt))
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        response = await client.post(
+            f"{GROQ_BASE_URL}/chat/completions",
+            headers=headers,
+            json=payload,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+    try:
+        raw = data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError) as exc:
+        logger.error("Unexpected Groq response structure (%s). Full response: %s", exc, json.dumps(data)[:500])
+        return ""
+
+    logger.debug("Groq raw response (%d chars): %s", len(raw), raw[:300])
+    if not raw:
+        logger.warning("Groq returned empty content. Full response: %s", json.dumps(data)[:500])
+
+    # If caller wants streaming-style chunks, simulate by calling on_chunk once
+    if on_chunk and raw:
+        on_chunk(raw)
+
+    return raw
+
+
+# ---------------------------------------------------------------------------
+# Unified entry point — routes to the active provider
+# ---------------------------------------------------------------------------
+async def ai_generate(
+    prompt: str,
+    model: Optional[str] = None,
+    on_chunk: Optional[Callable[[str], None]] = None,
+) -> str:
+    """Call the active AI provider (ollama or groq) and return the text output."""
+    if AI_PROVIDER == "groq":
+        return await groq_generate(prompt, model=model, on_chunk=on_chunk)
+    return await ollama_generate(prompt, model=model, on_chunk=on_chunk)
+
+
+# ---------------------------------------------------------------------------
+# JSON extraction from model output
+# ---------------------------------------------------------------------------
+def extract_json_from_response(text: str) -> Optional[dict | list]:
+    """Extract JSON from a model response, tolerating markdown code fences."""
+    if not text:
+        logger.warning("extract_json_from_response: received empty text.")
+        return None
+
     text = text.strip()
     patterns = [
         r'```json\s*([\s\S]+?)\s*```',
@@ -110,22 +254,32 @@ def extract_json_from_response(text: str) -> Optional[dict]:
     for pattern in patterns:
         match = re.search(pattern, text)
         if match:
+            candidate = match.group(1).strip()
             try:
-                return json.loads(match.group(1))
+                return json.loads(candidate)
             except json.JSONDecodeError:
                 continue
+
+    # Last resort: try the whole text
     try:
         return json.loads(text)
     except json.JSONDecodeError:
+        logger.warning(
+            "extract_json_from_response: could not parse JSON from response. "
+            "First 400 chars: %s",
+            text[:400],
+        )
         return None
 
 
+# ---------------------------------------------------------------------------
+# High-level analysis functions
+# ---------------------------------------------------------------------------
 async def extract_agreement_clauses(
     text: str,
-    model: str = None,
-    on_chunk: Optional[Callable[[str], None]] = None
+    model: Optional[str] = None,
+    on_chunk: Optional[Callable[[str], None]] = None,
 ) -> list:
-    """Step 1: Extract all distinct clauses from the agreement text."""
     prompt = f"""You are a legal document analyzer. Extract all distinct clauses from the following agreement text.
 
 For each clause, provide a JSON response with this exact structure:
@@ -148,22 +302,30 @@ Agreement Text:
 
 Respond ONLY with valid JSON. No explanations outside the JSON structure."""
 
-    response = await ollama_generate(prompt, model=model, on_chunk=on_chunk)
+    response = await ai_generate(prompt, model=model, on_chunk=on_chunk)
+    if not response:
+        logger.warning("extract_agreement_clauses: AI returned no output.")
+        return []
+
     data = extract_json_from_response(response)
     if data and isinstance(data, dict):
-        return data.get("clauses", [])
+        clauses = data.get("clauses", [])
+        logger.info("extract_agreement_clauses: extracted %d clauses.", len(clauses))
+        return clauses
     elif data and isinstance(data, list):
+        logger.info("extract_agreement_clauses: extracted %d clauses (list form).", len(data))
         return data
+
+    logger.warning("extract_agreement_clauses: JSON parse failed; returning empty list.")
     return []
 
 
 async def generate_rbi_understanding(
     clause_text: str,
     predefined_meaning: Optional[str],
-    model: str = None,
-    on_chunk: Optional[Callable[[str], None]] = None
+    model: Optional[str] = None,
+    on_chunk: Optional[Callable[[str], None]] = None,
 ) -> str:
-    """Step 2: Generate AI understanding of an RBI clause."""
     predefined = predefined_meaning or "No predefined meaning was provided."
     prompt = f"""You are an RBI (Reserve Bank of India) compliance expert.
 
@@ -179,10 +341,19 @@ Respond with a JSON object:
 
 Respond ONLY with valid JSON."""
 
-    response = await ollama_generate(prompt, model=model, on_chunk=on_chunk)
+    response = await ai_generate(prompt, model=model, on_chunk=on_chunk)
+    if not response:
+        logger.warning("generate_rbi_understanding: AI returned no output; using predefined meaning.")
+        return predefined
+
     data = extract_json_from_response(response)
     if data and isinstance(data, dict):
-        return data.get("ai_understanding", predefined)
+        understanding = data.get("ai_understanding", "")
+        if understanding:
+            return understanding
+        logger.warning("generate_rbi_understanding: 'ai_understanding' key missing or empty in parsed JSON.")
+
+    logger.warning("generate_rbi_understanding: falling back to predefined meaning.")
     return predefined
 
 
@@ -191,11 +362,9 @@ async def check_compliance(
     rbi_clause_text: str,
     rbi_clause_id: int,
     document_type: str = "Agreement",
-    model: str = None,
-    on_chunk: Optional[Callable[[str], None]] = None
+    model: Optional[str] = None,
+    on_chunk: Optional[Callable[[str], None]] = None,
 ) -> dict:
-    """Step 3: Check compliance of agreement clauses against an RBI clause."""
-
     clauses_text = json.dumps(agreement_clauses[:10], indent=2)
 
     incremental_instruction = ""
@@ -234,9 +403,20 @@ Rules:
 
 Respond ONLY with valid JSON."""
 
-    response = await ollama_generate(prompt, model=model, on_chunk=on_chunk)
-    data = extract_json_from_response(response)
+    _fallback = {
+        "compliance_status": "Review",
+        "risk_score": 50.0,
+        "agreement_reference": "Approximate Reference: Analysis could not be completed",
+        "ai_understanding_agreement": "Unable to analyze — please review manually",
+        "ai_understanding_rbi": rbi_clause_text,
+    }
 
+    response = await ai_generate(prompt, model=model, on_chunk=on_chunk)
+    if not response:
+        logger.warning("check_compliance (clause %d): AI returned no output.", rbi_clause_id)
+        return _fallback
+
+    data = extract_json_from_response(response)
     if data and isinstance(data, dict):
         return {
             "compliance_status": data.get("compliance_status", "Review"),
@@ -246,10 +426,5 @@ Respond ONLY with valid JSON."""
             "ai_understanding_rbi": data.get("ai_understanding_rbi", ""),
         }
 
-    return {
-        "compliance_status": "Review",
-        "risk_score": 50.0,
-        "agreement_reference": "Approximate Reference: Analysis could not be completed",
-        "ai_understanding_agreement": "Unable to analyze - please review manually",
-        "ai_understanding_rbi": rbi_clause_text,
-    }
+    logger.warning("check_compliance (clause %d): JSON parse failed; returning fallback.", rbi_clause_id)
+    return _fallback

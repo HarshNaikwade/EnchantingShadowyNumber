@@ -10,11 +10,13 @@ from database import get_db
 from models import AnalysisSession, Document, ComplianceResult, RBIClause
 from document_parser import parse_document
 from ai_analyzer import (
-    check_ollama_connection,
+    check_ai_connection,
     extract_agreement_clauses,
     generate_rbi_understanding,
     check_compliance,
     resolve_ollama_model,
+    get_ai_model,
+    AI_PROVIDER,
     OLLAMA_MODEL,
 )
 from progress import start as progress_start, update as progress_update, append_chunk, set_error, complete as progress_complete, get as get_progress
@@ -66,21 +68,24 @@ async def _run_ai_analysis_async(document_id: int, db_url: str):
             progress_complete(document_id)
             return
 
-        is_connected = await check_ollama_connection()
+        is_connected = await check_ai_connection()
         if not is_connected:
-            logger.warning("Ollama not reachable, skipping AI analysis")
+            logger.warning("%s not reachable, skipping AI analysis", AI_PROVIDER.upper())
             doc.processing_status = "completed_no_ai"
             db.commit()
-            set_error(document_id, "Ollama not reachable")
+            set_error(document_id, f"{AI_PROVIDER.upper()} not reachable")
             return
 
-        resolved_model = await resolve_ollama_model(OLLAMA_MODEL)
-        if not resolved_model:
-            logger.warning("No Ollama models available, skipping AI analysis")
-            doc.processing_status = "completed_no_ai"
-            db.commit()
-            set_error(document_id, "No Ollama models available")
-            return
+        if AI_PROVIDER == "groq":
+            resolved_model = get_ai_model()
+        else:
+            resolved_model = await resolve_ollama_model(OLLAMA_MODEL)
+            if not resolved_model:
+                logger.warning("No Ollama models available, skipping AI analysis")
+                doc.processing_status = "completed_no_ai"
+                db.commit()
+                set_error(document_id, "No Ollama models available")
+                return
 
         # Step 1: Ensure RBI clauses have AI understanding.
         progress_update(document_id, "rbi_understanding", "Analyzing RBI clauses")

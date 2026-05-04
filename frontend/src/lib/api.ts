@@ -56,6 +56,9 @@ export interface SessionDetail {
 
 export interface HealthStatus {
   status: string;
+  ai_provider: string;
+  ai_connected: boolean;
+  ai_model: string;
   ollama_connected: boolean;
   ollama_url: string;
 }

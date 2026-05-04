@@ -68,11 +68,15 @@ app.include_router(debug.router)
 
 @app.get("/api/health")
 async def health_check():
-    from ai_analyzer import check_ollama_connection
-    ollama_reachable = await check_ollama_connection()
+    from ai_analyzer import check_ai_connection, get_active_provider, get_ai_model
+    ai_connected = await check_ai_connection()
+    provider = get_active_provider()
     return {
         "status": "ok",
-        "ollama_connected": ollama_reachable,
+        "ai_provider": provider,
+        "ai_connected": ai_connected,
+        "ai_model": get_ai_model(),
+        "ollama_connected": ai_connected if provider == "ollama" else False,
         "ollama_url": os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
     }
 
