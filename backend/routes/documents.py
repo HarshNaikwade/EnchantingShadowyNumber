@@ -1,11 +1,9 @@
 import os
 import uuid
-import asyncio
 import logging
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import Optional
-from pydantic import BaseModel
 
 from database import get_db
 from models import AnalysisSession, Document, ComplianceResult, RBIClause

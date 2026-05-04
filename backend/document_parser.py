@@ -1,7 +1,6 @@
 import re
-import os
 import logging
-from typing import Optional, Tuple
+from typing import Tuple
 from pathlib import Path
 
 logger = logging.getLogger(__name__)

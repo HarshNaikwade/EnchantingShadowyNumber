@@ -1,33 +1,49 @@
-import { useState, useCallback, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useDropzone } from 'react-dropzone'
+import { useState, useCallback } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useDropzone } from "react-dropzone";
 import {
-  ArrowLeft, Upload, Download, Trash2, ChevronDown, ChevronUp,
-  FileText, Loader2, Calendar, Shield, RefreshCw, AlertCircle
-} from 'lucide-react'
-import { format } from 'date-fns'
-import apiClient, { type Document } from '@/lib/api'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Separator } from '@/components/ui/separator'
-import { ComplianceTables } from '@/components/ComplianceTables'
-import { OllamaStatusBar } from '@/components/OllamaWarning'
+  ArrowLeft,
+  Upload,
+  Download,
+  Trash2,
+  ChevronDown,
+  ChevronUp,
+  FileText,
+  Loader2,
+  Calendar,
+  Shield,
+  RefreshCw,
+  AlertCircle,
+} from "lucide-react";
+import { format } from "date-fns";
+import apiClient, { type Document } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { ComplianceTables } from "@/components/ComplianceTables";
+import { OllamaStatusBar } from "@/components/OllamaWarning";
 
-const DOC_TYPES = ['Agreement', 'Amendment', 'Addendum', 'MOU']
+const DOC_TYPES = ["Agreement", "Amendment", "Addendum", "MOU"];
 
 const statusBadge: Record<string, string> = {
-  completed: 'success',
-  processing: 'warning',
-  queued: 'secondary',
-  pending: 'secondary',
-  failed: 'danger',
-  completed_no_ai: 'review',
-}
+  completed: "success",
+  processing: "warning",
+  queued: "secondary",
+  pending: "secondary",
+  failed: "danger",
+  completed_no_ai: "review",
+};
 
 function DocumentCard({
   doc,
@@ -35,41 +51,46 @@ function DocumentCard({
   rbiClauses,
   index,
 }: {
-  doc: Document
-  sessionId: number
-  rbiClauses: any[]
-  index: number
+  doc: Document;
+  sessionId: number;
+  rbiClauses: any[];
+  index: number;
 }) {
-  const queryClient = useQueryClient()
-  const [expanded, setExpanded] = useState(false)
-  const [editEffective, setEditEffective] = useState(doc.effective_date)
-  const [editCreation, setEditCreation] = useState(doc.creation_date)
-  const [editingDates, setEditingDates] = useState(false)
+  const queryClient = useQueryClient();
+  const [expanded, setExpanded] = useState(false);
+  const [editEffective, setEditEffective] = useState(doc.effective_date);
+  const [editCreation, setEditCreation] = useState(doc.creation_date);
+  const [editingDates, setEditingDates] = useState(false);
 
   const { data: status, refetch: refetchStatus } = useQuery({
-    queryKey: ['docStatus', doc.id],
+    queryKey: ["docStatus", doc.id],
     queryFn: () => apiClient.getDocumentStatus(doc.id),
-    refetchInterval: doc.processing_status !== 'completed' && doc.processing_status !== 'failed' ? 3000 : false,
-  })
+    refetchInterval:
+      doc.processing_status !== "completed" &&
+      doc.processing_status !== "failed"
+        ? 3000
+        : false,
+  });
 
-  const currentStatus = status?.status || doc.processing_status
+  const currentStatus = status?.status || doc.processing_status;
 
   const deleteMutation = useMutation({
     mutationFn: () => apiClient.deleteDocument(doc.id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['session', sessionId] })
+      queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
     },
-  })
+  });
 
   const updateDatesMutation = useMutation({
-    mutationFn: () => apiClient.updateDocumentDates(doc.id, editEffective, editCreation),
+    mutationFn: () =>
+      apiClient.updateDocumentDates(doc.id, editEffective, editCreation),
     onSuccess: () => {
-      setEditingDates(false)
-      queryClient.invalidateQueries({ queryKey: ['session', sessionId] })
+      setEditingDates(false);
+      queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
     },
-  })
+  });
 
-  const reportUrl = apiClient.getDocumentReportUrl(sessionId, doc.id)
+  const reportUrl = apiClient.getDocumentReportUrl(sessionId, doc.id);
 
   return (
     <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
@@ -80,7 +101,9 @@ function DocumentCard({
           <div className="min-w-0">
             <span className="font-semibold">{doc.file_type}</span>
             <span className="text-muted-foreground"> — </span>
-            <span className="text-gray-600 truncate">{doc.original_filename}</span>
+            <span className="text-gray-600 truncate">
+              {doc.original_filename}
+            </span>
           </div>
         </div>
 
@@ -90,9 +113,14 @@ function DocumentCard({
         </div>
 
         <Badge variant={statusBadge[currentStatus] as any} className="shrink-0">
-          {currentStatus === 'processing' || currentStatus === 'queued' ? (
-            <span className="flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" />{currentStatus}</span>
-          ) : currentStatus}
+          {currentStatus === "processing" || currentStatus === "queued" ? (
+            <span className="flex items-center gap-1">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              {currentStatus}
+            </span>
+          ) : (
+            currentStatus
+          )}
         </Badge>
 
         <div className="flex items-center gap-1 shrink-0">
@@ -107,7 +135,7 @@ function DocumentCard({
             size="icon"
             className="h-8 w-8 text-destructive hover:text-destructive"
             onClick={() => {
-              if (confirm('Delete this document?')) deleteMutation.mutate()
+              if (confirm("Delete this document?")) deleteMutation.mutate();
             }}
           >
             <Trash2 className="h-4 w-4" />
@@ -118,7 +146,11 @@ function DocumentCard({
             className="h-8 w-8"
             onClick={() => setExpanded(!expanded)}
           >
-            {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            {expanded ? (
+              <ChevronUp className="h-4 w-4" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
+            )}
           </Button>
         </div>
       </div>
@@ -132,7 +164,10 @@ function DocumentCard({
                 <Input
                   className="h-8 text-xs w-36"
                   value={editEffective}
-                  onChange={e => { setEditEffective(e.target.value); setEditingDates(true) }}
+                  onChange={(e) => {
+                    setEditEffective(e.target.value);
+                    setEditingDates(true);
+                  }}
                 />
               </div>
               <div className="space-y-1">
@@ -140,7 +175,10 @@ function DocumentCard({
                 <Input
                   className="h-8 text-xs w-36"
                   value={editCreation}
-                  onChange={e => { setEditCreation(e.target.value); setEditingDates(true) }}
+                  onChange={(e) => {
+                    setEditCreation(e.target.value);
+                    setEditingDates(true);
+                  }}
                 />
               </div>
               {editingDates && (
@@ -155,20 +193,26 @@ function DocumentCard({
               )}
             </div>
 
-            {(currentStatus === 'processing' || currentStatus === 'queued') && (
+            {(currentStatus === "processing" || currentStatus === "queued") && (
               <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-1.5 ml-auto">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 AI analysis in progress... This may take a few minutes.
-                <Button variant="ghost" size="sm" className="h-6 p-1" onClick={() => refetchStatus()}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 p-1"
+                  onClick={() => refetchStatus()}
+                >
                   <RefreshCw className="h-3 w-3" />
                 </Button>
               </div>
             )}
 
-            {currentStatus === 'completed_no_ai' && (
+            {currentStatus === "completed_no_ai" && (
               <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-1.5 ml-auto">
                 <AlertCircle className="h-3.5 w-3.5" />
-                Ollama was not connected during analysis. Start Ollama and re-upload for AI insights.
+                Ollama was not connected during analysis. Start Ollama and
+                re-upload for AI insights.
               </div>
             )}
           </div>
@@ -183,80 +227,83 @@ function DocumentCard({
         </div>
       )}
     </div>
-  )
+  );
 }
 
 export default function AnalysisWorkspace() {
-  const { id } = useParams<{ id: string }>()
-  const navigate = useNavigate()
-  const queryClient = useQueryClient()
-  const sessionId = Number(id)
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const sessionId = Number(id);
 
-  const [docType, setDocType] = useState('Agreement')
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [uploading, setUploading] = useState(false)
-  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [docType, setDocType] = useState("Agreement");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const { data: session, isLoading } = useQuery({
-    queryKey: ['session', sessionId],
+    queryKey: ["session", sessionId],
     queryFn: () => apiClient.getSession(sessionId),
     refetchInterval: 5000,
-  })
+  });
 
   const { data: rbiClauses = [] } = useQuery({
-    queryKey: ['rbiClauses', sessionId],
+    queryKey: ["rbiClauses", sessionId],
     queryFn: () => apiClient.getRBIClauses(sessionId),
-  })
+  });
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
-      setSelectedFile(acceptedFiles[0])
-      setUploadError(null)
+      setSelectedFile(acceptedFiles[0]);
+      setUploadError(null);
     }
-  }, [])
+  }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      'application/pdf': ['.pdf'],
-      'application/msword': ['.doc'],
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+      "application/pdf": [".pdf"],
+      "application/msword": [".doc"],
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        [".docx"],
     },
     maxFiles: 1,
-  })
+  });
 
   const handleUpload = async () => {
-    if (!selectedFile) return
-    setUploading(true)
-    setUploadError(null)
+    if (!selectedFile) return;
+    setUploading(true);
+    setUploadError(null);
     try {
-      await apiClient.uploadDocument(sessionId, selectedFile, docType)
-      setSelectedFile(null)
-      queryClient.invalidateQueries({ queryKey: ['session', sessionId] })
+      await apiClient.uploadDocument(sessionId, selectedFile, docType);
+      setSelectedFile(null);
+      queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
     } catch (err: any) {
-      setUploadError(err.response?.data?.detail || 'Upload failed. Please try again.')
+      setUploadError(
+        err.response?.data?.detail || "Upload failed. Please try again.",
+      );
     } finally {
-      setUploading(false)
+      setUploading(false);
     }
-  }
+  };
 
-  const reportUrl = apiClient.getReportUrl(sessionId)
+  const reportUrl = apiClient.getReportUrl(sessionId);
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
-    )
+    );
   }
 
   if (!session) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen gap-4">
         <p className="text-muted-foreground">Session not found</p>
-        <Button onClick={() => navigate('/')}>Go to Dashboard</Button>
+        <Button onClick={() => navigate("/")}>Go to Dashboard</Button>
       </div>
-    )
+    );
   }
 
   return (
@@ -264,16 +311,24 @@ export default function AnalysisWorkspace() {
       <header className="border-b bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/')} className="shrink-0">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate("/")}
+              className="shrink-0"
+            >
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div className="flex items-center gap-2">
               <Shield className="h-5 w-5 text-primary" />
               <div>
-                <h1 className="text-lg font-bold text-gray-900 leading-none">{session.title}</h1>
+                <h1 className="text-lg font-bold text-gray-900 leading-none">
+                  {session.title}
+                </h1>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Created {format(new Date(session.created_at), 'dd MMM yyyy')} •{' '}
-                  {session.documents.length} document{session.documents.length !== 1 ? 's' : ''}
+                  Created {format(new Date(session.created_at), "dd MMM yyyy")}{" "}
+                  • {session.documents.length} document
+                  {session.documents.length !== 1 ? "s" : ""}
                 </p>
               </div>
             </div>
@@ -307,8 +362,10 @@ export default function AnalysisWorkspace() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {DOC_TYPES.map(t => (
-                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                    {DOC_TYPES.map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {t}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -318,20 +375,28 @@ export default function AnalysisWorkspace() {
                 <div
                   {...getRootProps()}
                   className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${
-                    isDragActive ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
+                    isDragActive
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/50"
                   }`}
                 >
                   <input {...getInputProps()} />
                   {selectedFile ? (
                     <div className="flex items-center justify-center gap-2 text-sm">
                       <FileText className="h-4 w-4 text-primary" />
-                      <span className="font-medium text-gray-800">{selectedFile.name}</span>
-                      <span className="text-muted-foreground text-xs">({(selectedFile.size / 1024).toFixed(1)} KB)</span>
+                      <span className="font-medium text-gray-800">
+                        {selectedFile.name}
+                      </span>
+                      <span className="text-muted-foreground text-xs">
+                        ({(selectedFile.size / 1024).toFixed(1)} KB)
+                      </span>
                     </div>
                   ) : (
                     <div className="text-sm text-muted-foreground">
                       <Upload className="h-5 w-5 mx-auto mb-1 text-muted-foreground/60" />
-                      {isDragActive ? 'Drop file here...' : 'Drag & drop or click to select PDF/DOCX'}
+                      {isDragActive
+                        ? "Drop file here..."
+                        : "Drag & drop or click to select PDF/DOCX"}
                     </div>
                   )}
                 </div>
@@ -343,9 +408,15 @@ export default function AnalysisWorkspace() {
                 className="h-9 shrink-0"
               >
                 {uploading ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Uploading...</>
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Uploading...
+                  </>
                 ) : (
-                  <><Upload className="h-4 w-4 mr-2" />Upload & Analyze</>
+                  <>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Upload & Analyze
+                  </>
                 )}
               </Button>
             </div>
@@ -361,15 +432,22 @@ export default function AnalysisWorkspace() {
 
         <div>
           <div className="flex items-center gap-2 mb-4">
-            <h2 className="text-lg font-bold text-gray-900">Document History</h2>
+            <h2 className="text-lg font-bold text-gray-900">
+              Document History
+            </h2>
             <Separator className="flex-1" />
-            <span className="text-sm text-muted-foreground">{session.documents.length} document{session.documents.length !== 1 ? 's' : ''}</span>
+            <span className="text-sm text-muted-foreground">
+              {session.documents.length} document
+              {session.documents.length !== 1 ? "s" : ""}
+            </span>
           </div>
 
           {session.documents.length === 0 ? (
             <div className="text-center py-12 border-2 border-dashed border-border rounded-xl">
               <FileText className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-              <p className="text-muted-foreground text-sm">No documents uploaded yet. Upload your first agreement above.</p>
+              <p className="text-muted-foreground text-sm">
+                No documents uploaded yet. Upload your first agreement above.
+              </p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -387,5 +465,5 @@ export default function AnalysisWorkspace() {
         </div>
       </main>
     </div>
-  )
+  );
 }
