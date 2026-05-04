@@ -32,6 +32,7 @@ This tool helps compliance teams and legal reviewers compare agreement clauses w
 ## Architecture
 
 ### Backend (FastAPI)
+
 - Location: backend/
 - Port: 8000
 - DB: SQLite (compliance_checker.db)
@@ -39,6 +40,7 @@ This tool helps compliance teams and legal reviewers compare agreement clauses w
 - File storage: uploads/
 
 ### Frontend (React + Vite)
+
 - Location: frontend/
 - Port: 5000
 - Uses /api proxy to talk to backend
@@ -46,11 +48,13 @@ This tool helps compliance teams and legal reviewers compare agreement clauses w
 ## Tech stack
 
 Frontend:
+
 - React 18, Vite 5, TypeScript 5
 - TanStack Query, Axios
 - Tailwind CSS v4, Radix UI
 
 Backend:
+
 - Python 3
 - FastAPI, Uvicorn, SQLAlchemy
 - SQLite
@@ -59,6 +63,7 @@ Backend:
 - httpx (Ollama requests)
 
 AI:
+
 - Ollama local model server
 - Model configurable via OLLAMA_MODEL (fallback to first available model)
 
@@ -77,34 +82,40 @@ AI:
 ## Local development
 
 Prerequisites:
+
 - Python 3
 - Node.js
 - Ollama installed and running
 
-1) Install and run Ollama
+1. Install and run Ollama
+
 - Install from https://ollama.ai
 - Pull a model, for example:
   - ollama pull gemma4
 - Start server:
   - ollama serve
 
-2) Backend setup
+2. Backend setup
+
 - cd backend
 - pip install -r requirements.txt
 - python main.py
 
-3) Frontend setup
+3. Frontend setup
+
 - cd frontend
 - npm install
 - npm run dev
 
 Open:
+
 - Frontend: http://localhost:5000
 - Backend: http://localhost:8000
 
 ## Configuration
 
 Environment variables (optional):
+
 - OLLAMA_BASE_URL (default: http://localhost:11434)
 - OLLAMA_MODEL (default: llama3)
 - BACKEND_PORT (default: 8000)
@@ -125,21 +136,25 @@ Environment variables (optional):
 ## Improvements (recommended next steps)
 
 AI pipeline:
+
 - Add chunking and section-level analysis for large documents.
 - Add evaluation steps (confidence scores, evidence citations).
 - Cache and reuse clause understanding per category/version.
 
 Data and scalability:
+
 - Add Postgres support with migrations.
 - Add background job queue (Celery/RQ/Arq) for long-running tasks.
 - Store model, prompt version, and timestamps for traceability.
 
 Product and UX:
+
 - Add re-run and clause analysis buttons in the UI.
 - Add progress and logs for each AI step.
 - Add a clause mapping view (RBI clause -> matching agreement clause).
 
 Quality and safety:
+
 - Add validation tests for parser outputs and AI JSON schemas.
 - Add structured error reporting and retry logic for AI calls.
 - Add auth and role-based access control if used beyond local dev.

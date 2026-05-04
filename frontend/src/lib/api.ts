@@ -1,211 +1,230 @@
-import axios from 'axios'
-import { logError, logEvent } from './debugLogger'
+import axios from "axios";
+import { logError, logEvent } from "./debugLogger";
 
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: "/api",
   timeout: 30000,
-})
+});
 
 export interface AnalysisSession {
-  id: number
-  title: string
-  created_at: string
-  status: string
-  document_count: number
+  id: number;
+  title: string;
+  created_at: string;
+  status: string;
+  document_count: number;
 }
 
 export interface Document {
-  id: number
-  session_id: number
-  filename: string
-  original_filename: string
-  file_type: string
-  upload_date: string
-  effective_date: string
-  creation_date: string
-  processing_status: string
+  id: number;
+  session_id: number;
+  filename: string;
+  original_filename: string;
+  file_type: string;
+  upload_date: string;
+  effective_date: string;
+  creation_date: string;
+  processing_status: string;
 }
 
 export interface RBIClause {
-  id: number
-  clause_text: string
-  predefined_meaning: string | null
-  category: string | null
-  ai_understanding: string | null
+  id: number;
+  clause_text: string;
+  predefined_meaning: string | null;
+  category: string | null;
+  ai_understanding: string | null;
 }
 
 export interface ComplianceResult {
-  id: number
-  document_id: number
-  rbi_clause_id: number
-  compliance_status: 'Compliant' | 'Non-Compliant' | 'Review'
-  risk_score: number
-  agreement_reference: string | null
-  ai_understanding_agreement: string | null
-  ai_understanding_rbi: string | null
-  rbi_clause?: RBIClause
+  id: number;
+  document_id: number;
+  rbi_clause_id: number;
+  compliance_status: "Compliant" | "Non-Compliant" | "Review";
+  risk_score: number;
+  agreement_reference: string | null;
+  ai_understanding_agreement: string | null;
+  ai_understanding_rbi: string | null;
+  rbi_clause?: RBIClause;
 }
 
 export interface SessionDetail {
-  id: number
-  title: string
-  created_at: string
-  status: string
-  documents: Document[]
+  id: number;
+  title: string;
+  created_at: string;
+  status: string;
+  documents: Document[];
 }
 
 export interface HealthStatus {
-  status: string
-  ollama_connected: boolean
-  ollama_url: string
+  status: string;
+  ollama_connected: boolean;
+  ollama_url: string;
 }
 
 export interface RBIClausePayload {
-  clause_text: string
-  predefined_meaning?: string
-  category?: string
+  clause_text: string;
+  predefined_meaning?: string;
+  category?: string;
 }
 
 export interface BackendLogEntry {
-  ts: string
-  level: string
-  logger: string
-  message: string
+  ts: string;
+  level: string;
+  logger: string;
+  message: string;
 }
 
 export interface BackendLogResponse {
-  logs: BackendLogEntry[]
+  logs: BackendLogEntry[];
 }
 
 export interface DocumentProgress {
-  document_id: number
-  step: string
-  message: string
-  response_preview: string
-  started_at: string
-  updated_at: string
-  last_chunk_at: string | null
-  last_chunk_age: number | null
-  stalled: boolean
-  error: string | null
-  done: boolean
+  document_id: number;
+  step: string;
+  message: string;
+  response_preview: string;
+  started_at: string;
+  updated_at: string;
+  last_chunk_at: string | null;
+  last_chunk_age: number | null;
+  stalled: boolean;
+  error: string | null;
+  done: boolean;
 }
 
 export const apiClient = {
-  health: (): Promise<HealthStatus> =>
-    api.get('/health').then(r => r.data),
+  health: (): Promise<HealthStatus> => api.get("/health").then((r) => r.data),
 
   listClauses: (): Promise<RBIClause[]> =>
-    api.get('/clauses/').then(r => r.data),
+    api.get("/clauses/").then((r) => r.data),
 
   createClause: (payload: RBIClausePayload): Promise<RBIClause> =>
-    api.post('/clauses/', payload).then(r => r.data),
+    api.post("/clauses/", payload).then((r) => r.data),
 
-  updateClause: (id: number, payload: Partial<RBIClausePayload>): Promise<RBIClause> =>
-    api.put(`/clauses/${id}`, payload).then(r => r.data),
+  updateClause: (
+    id: number,
+    payload: Partial<RBIClausePayload>,
+  ): Promise<RBIClause> =>
+    api.put(`/clauses/${id}`, payload).then((r) => r.data),
 
   deleteClause: (id: number): Promise<void> =>
-    api.delete(`/clauses/${id}`).then(r => r.data),
+    api.delete(`/clauses/${id}`).then((r) => r.data),
 
-  analyzeClauses: (force = false): Promise<{ message: string; force: boolean }> =>
-    api.post(`/clauses/analyze?force=${force}`).then(r => r.data),
+  analyzeClauses: (
+    force = false,
+  ): Promise<{ message: string; force: boolean }> =>
+    api.post(`/clauses/analyze?force=${force}`).then((r) => r.data),
 
   listSessions: (): Promise<AnalysisSession[]> =>
-    api.get('/analysis/').then(r => r.data),
+    api.get("/analysis/").then((r) => r.data),
 
   createSession: (title: string): Promise<AnalysisSession> =>
-    api.post('/analysis/create', { title }).then(r => r.data),
+    api.post("/analysis/create", { title }).then((r) => r.data),
 
   getSession: (id: number): Promise<SessionDetail> =>
-    api.get(`/analysis/${id}`).then(r => r.data),
+    api.get(`/analysis/${id}`).then((r) => r.data),
 
   deleteSession: (id: number): Promise<void> =>
-    api.delete(`/analysis/${id}`).then(r => r.data),
+    api.delete(`/analysis/${id}`).then((r) => r.data),
 
-  getDocumentResults: (sessionId: number, documentId: number): Promise<ComplianceResult[]> =>
-    api.get(`/analysis/${sessionId}/documents/${documentId}/results`).then(r => r.data),
+  getDocumentResults: (
+    sessionId: number,
+    documentId: number,
+  ): Promise<ComplianceResult[]> =>
+    api
+      .get(`/analysis/${sessionId}/documents/${documentId}/results`)
+      .then((r) => r.data),
 
   getRBIClauses: (sessionId: number): Promise<RBIClause[]> =>
-    api.get(`/analysis/${sessionId}/rbi-clauses`).then(r => r.data),
+    api.get(`/analysis/${sessionId}/rbi-clauses`).then((r) => r.data),
 
   uploadDocument: (
     sessionId: number,
     file: File,
     fileType: string,
     effectiveDate?: string,
-    creationDate?: string
-  ): Promise<{ document_id: number; effective_date: string; creation_date: string; processing_status: string }> => {
-    const formData = new FormData()
-    formData.append('session_id', String(sessionId))
-    formData.append('file', file)
-    formData.append('file_type', fileType)
-    if (effectiveDate) formData.append('effective_date', effectiveDate)
-    if (creationDate) formData.append('creation_date', creationDate)
-    return api.post('/document/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      timeout: 60000,
-    }).then(r => r.data)
+    creationDate?: string,
+  ): Promise<{
+    document_id: number;
+    effective_date: string;
+    creation_date: string;
+    processing_status: string;
+  }> => {
+    const formData = new FormData();
+    formData.append("session_id", String(sessionId));
+    formData.append("file", file);
+    formData.append("file_type", fileType);
+    if (effectiveDate) formData.append("effective_date", effectiveDate);
+    if (creationDate) formData.append("creation_date", creationDate);
+    return api
+      .post("/document/upload", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+        timeout: 60000,
+      })
+      .then((r) => r.data);
   },
 
-  getDocumentStatus: (documentId: number): Promise<{ document_id: number; status: string }> =>
-    api.get(`/document/${documentId}/status`).then(r => r.data),
+  getDocumentStatus: (
+    documentId: number,
+  ): Promise<{ document_id: number; status: string }> =>
+    api.get(`/document/${documentId}/status`).then((r) => r.data),
 
   getDocumentProgress: (documentId: number): Promise<DocumentProgress> =>
-    api.get(`/document/${documentId}/progress`).then(r => r.data),
+    api.get(`/document/${documentId}/progress`).then((r) => r.data),
 
   updateDocumentDates: (
     documentId: number,
     effectiveDate?: string,
-    creationDate?: string
+    creationDate?: string,
   ): Promise<void> => {
-    const params: Record<string, string> = {}
-    if (effectiveDate) params.effective_date = effectiveDate
-    if (creationDate) params.creation_date = creationDate
-    return api.patch(`/document/${documentId}/dates`, null, { params }).then(r => r.data)
+    const params: Record<string, string> = {};
+    if (effectiveDate) params.effective_date = effectiveDate;
+    if (creationDate) params.creation_date = creationDate;
+    return api
+      .patch(`/document/${documentId}/dates`, null, { params })
+      .then((r) => r.data);
   },
 
   deleteDocument: (documentId: number): Promise<void> =>
-    api.delete(`/document/${documentId}`).then(r => r.data),
+    api.delete(`/document/${documentId}`).then((r) => r.data),
 
-  getReportUrl: (sessionId: number): string =>
-    `/api/report/${sessionId}`,
+  getReportUrl: (sessionId: number): string => `/api/report/${sessionId}`,
 
   getDocumentReportUrl: (sessionId: number, documentId: number): string =>
     `/api/report/${sessionId}/document/${documentId}`,
 
   getBackendLogs: (limit = 200): Promise<BackendLogResponse> =>
-    api.get(`/debug/logs?limit=${limit}`).then(r => r.data),
-}
+    api.get(`/debug/logs?limit=${limit}`).then((r) => r.data),
+};
 
-export default apiClient
+export default apiClient;
 
 api.interceptors.request.use(
   (config) => {
-    logEvent('API request started', { method: config.method, url: config.url })
-    return config
+    logEvent("API request started", { method: config.method, url: config.url });
+    return config;
   },
   (error) => {
-    logError('API request error', error)
-    return Promise.reject(error)
-  }
-)
+    logError("API request error", error);
+    return Promise.reject(error);
+  },
+);
 
 api.interceptors.response.use(
   (response) => {
-    logEvent('API request completed', {
+    logEvent("API request completed", {
       method: response.config.method,
       url: response.config.url,
       status: response.status,
-    })
-    return response
+    });
+    return response;
   },
   (error) => {
-    logError('API response error', {
+    logError("API response error", {
       url: error?.config?.url,
       status: error?.response?.status,
       message: error?.message,
       detail: error?.response?.data,
-    })
-    return Promise.reject(error)
-  }
-)
+    });
+    return Promise.reject(error);
+  },
+);

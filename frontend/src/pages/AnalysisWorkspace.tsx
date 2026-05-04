@@ -79,7 +79,9 @@ function DocumentCard({
     queryKey: ["docProgress", doc.id],
     queryFn: () => apiClient.getDocumentProgress(doc.id),
     refetchInterval:
-      currentStatus === "processing" || currentStatus === "queued" ? 3000 : false,
+      currentStatus === "processing" || currentStatus === "queued"
+        ? 3000
+        : false,
     retry: false,
   });
 
@@ -215,7 +217,9 @@ function DocumentCard({
                   size="sm"
                   className="h-6 p-1"
                   onClick={() => {
-                    logEvent("Status refresh requested", { documentId: doc.id });
+                    logEvent("Status refresh requested", {
+                      documentId: doc.id,
+                    });
                     refetchStatus();
                   }}
                 >
@@ -224,30 +228,39 @@ function DocumentCard({
               </div>
             )}
 
-            {progress && (currentStatus === "processing" || currentStatus === "queued") && (
-              <div className="ml-auto text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded px-3 py-2 w-full">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-semibold">AI step:</span>
-                  <span className="capitalize">{progress.step.replace(/_/g, " ")}</span>
-                  {progress.stalled && (
-                    <span className="text-amber-700">
-                      No response received for {progress.last_chunk_age ?? "?"}s
+            {progress &&
+              (currentStatus === "processing" ||
+                currentStatus === "queued") && (
+                <div className="ml-auto text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded px-3 py-2 w-full">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold">AI step:</span>
+                    <span className="capitalize">
+                      {progress.step.replace(/_/g, " ")}
                     </span>
+                    {progress.stalled && (
+                      <span className="text-amber-700">
+                        No response received for{" "}
+                        {progress.last_chunk_age ?? "?"}s
+                      </span>
+                    )}
+                  </div>
+                  {progress.message && (
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {progress.message}
+                    </div>
+                  )}
+                  {progress.response_preview && (
+                    <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-[11px] bg-white border border-slate-200 rounded p-2">
+                      {progress.response_preview}
+                    </pre>
+                  )}
+                  {progress.error && (
+                    <div className="mt-2 text-xs text-destructive">
+                      {progress.error}
+                    </div>
                   )}
                 </div>
-                {progress.message && (
-                  <div className="text-xs text-muted-foreground mt-1">{progress.message}</div>
-                )}
-                {progress.response_preview && (
-                  <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-[11px] bg-white border border-slate-200 rounded p-2">
-                    {progress.response_preview}
-                  </pre>
-                )}
-                {progress.error && (
-                  <div className="mt-2 text-xs text-destructive">{progress.error}</div>
-                )}
-              </div>
-            )}
+              )}
 
             {currentStatus === "completed_no_ai" && (
               <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-1.5 ml-auto">

@@ -1,8 +1,8 @@
-import { Routes, Route } from 'react-router-dom'
-import Dashboard from './pages/Dashboard'
-import AnalysisWorkspace from './pages/AnalysisWorkspace'
-import RBIClausesSettings from './pages/RBIClausesSettings'
-import DebugPanel from './components/DebugPanel'
+import { Routes, Route } from "react-router-dom";
+import Dashboard from "./pages/Dashboard";
+import AnalysisWorkspace from "./pages/AnalysisWorkspace";
+import RBIClausesSettings from "./pages/RBIClausesSettings";
+import DebugPanel from "./components/DebugPanel";
 
 export default function App() {
   return (
@@ -14,5 +14,5 @@ export default function App() {
       </Routes>
       <DebugPanel />
     </>
-  )
+  );
 }

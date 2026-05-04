@@ -1,72 +1,76 @@
-import { useEffect, useMemo, useState } from 'react'
-import apiClient from '@/lib/api'
-import { subscribeLogs, type LogEntry } from '@/lib/debugLogger'
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { cn } from '@/lib/utils'
+import { useEffect, useMemo, useState } from "react";
+import apiClient from "@/lib/api";
+import { subscribeLogs, type LogEntry } from "@/lib/debugLogger";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 interface BackendLogEntry {
-  ts: string
-  level: string
-  logger: string
-  message: string
+  ts: string;
+  level: string;
+  logger: string;
+  message: string;
 }
 
 const levelTone = (level: string) => {
-  const normalized = level.toLowerCase()
-  if (normalized === 'error') return 'danger'
-  if (normalized === 'warning' || normalized === 'warn') return 'review'
-  return 'secondary'
-}
+  const normalized = level.toLowerCase();
+  if (normalized === "error") return "danger";
+  if (normalized === "warning" || normalized === "warn") return "review";
+  return "secondary";
+};
 
 export default function DebugPanel() {
-  const [open, setOpen] = useState(false)
-  const [frontendLogs, setFrontendLogs] = useState<LogEntry[]>([])
-  const [backendLogs, setBackendLogs] = useState<BackendLogEntry[]>([])
-  const [activeTab, setActiveTab] = useState<'frontend' | 'backend'>('frontend')
+  const [open, setOpen] = useState(false);
+  const [frontendLogs, setFrontendLogs] = useState<LogEntry[]>([]);
+  const [backendLogs, setBackendLogs] = useState<BackendLogEntry[]>([]);
+  const [activeTab, setActiveTab] = useState<"frontend" | "backend">(
+    "frontend",
+  );
 
-  useEffect(() => subscribeLogs(setFrontendLogs), [])
+  useEffect(() => subscribeLogs(setFrontendLogs), []);
 
   useEffect(() => {
-    if (!open) return
-    let cancelled = false
+    if (!open) return;
+    let cancelled = false;
 
     const fetchLogs = async () => {
       try {
-        const data = await apiClient.getBackendLogs(200)
-        if (!cancelled) setBackendLogs(data.logs)
+        const data = await apiClient.getBackendLogs(200);
+        if (!cancelled) setBackendLogs(data.logs);
       } catch {
         if (!cancelled) {
-          setBackendLogs((prev) => prev)
+          setBackendLogs((prev) => prev);
         }
       }
-    }
+    };
 
-    fetchLogs()
-    const timer = window.setInterval(fetchLogs, 5000)
+    fetchLogs();
+    const timer = window.setInterval(fetchLogs, 5000);
     return () => {
-      cancelled = true
-      window.clearInterval(timer)
-    }
-  }, [open])
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [open]);
 
   const hasErrors = useMemo(() => {
-    const frontendError = frontendLogs.some((log) => log.level === 'error')
-    const backendError = backendLogs.some((log) => log.level.toLowerCase() === 'error')
-    return frontendError || backendError
-  }, [frontendLogs, backendLogs])
+    const frontendError = frontendLogs.some((log) => log.level === "error");
+    const backendError = backendLogs.some(
+      (log) => log.level.toLowerCase() === "error",
+    );
+    return frontendError || backendError;
+  }, [frontendLogs, backendLogs]);
 
-  if (!import.meta.env.DEV) return null
+  if (!import.meta.env.DEV) return null;
 
   return (
     <div className="fixed bottom-4 right-4 z-50">
       <Button
-        variant={hasErrors ? 'destructive' : 'outline'}
+        variant={hasErrors ? "destructive" : "outline"}
         className="shadow-lg"
         onClick={() => setOpen((prev) => !prev)}
       >
-        {open ? 'Hide Debug Logs' : 'Show Debug Logs'}
+        {open ? "Hide Debug Logs" : "Show Debug Logs"}
       </Button>
 
       {open && (
@@ -75,19 +79,23 @@ export default function DebugPanel() {
             <div className="flex items-center gap-2 text-xs font-semibold">
               <button
                 className={cn(
-                  'px-2 py-1 rounded',
-                  activeTab === 'frontend' ? 'bg-primary text-white' : 'bg-muted'
+                  "px-2 py-1 rounded",
+                  activeTab === "frontend"
+                    ? "bg-primary text-white"
+                    : "bg-muted",
                 )}
-                onClick={() => setActiveTab('frontend')}
+                onClick={() => setActiveTab("frontend")}
               >
                 Frontend Console
               </button>
               <button
                 className={cn(
-                  'px-2 py-1 rounded',
-                  activeTab === 'backend' ? 'bg-primary text-white' : 'bg-muted'
+                  "px-2 py-1 rounded",
+                  activeTab === "backend"
+                    ? "bg-primary text-white"
+                    : "bg-muted",
                 )}
-                onClick={() => setActiveTab('backend')}
+                onClick={() => setActiveTab("backend")}
               >
                 Backend Logs
               </button>
@@ -95,9 +103,11 @@ export default function DebugPanel() {
           </div>
 
           <div className="max-h-[340px] overflow-auto text-xs p-3 space-y-2">
-            {activeTab === 'frontend' && (
-              frontendLogs.length === 0 ? (
-                <div className="text-muted-foreground">No frontend logs yet.</div>
+            {activeTab === "frontend" &&
+              (frontendLogs.length === 0 ? (
+                <div className="text-muted-foreground">
+                  No frontend logs yet.
+                </div>
               ) : (
                 frontendLogs.map((log) => (
                   <div key={log.id} className="flex gap-2">
@@ -106,16 +116,19 @@ export default function DebugPanel() {
                     </Badge>
                     <div className="min-w-0">
                       <div className="text-muted-foreground">{log.ts}</div>
-                      <div className="break-words whitespace-pre-wrap">{log.message}</div>
+                      <div className="break-words whitespace-pre-wrap">
+                        {log.message}
+                      </div>
                     </div>
                   </div>
                 ))
-              )
-            )}
+              ))}
 
-            {activeTab === 'backend' && (
-              backendLogs.length === 0 ? (
-                <div className="text-muted-foreground">No backend logs yet.</div>
+            {activeTab === "backend" &&
+              (backendLogs.length === 0 ? (
+                <div className="text-muted-foreground">
+                  No backend logs yet.
+                </div>
               ) : (
                 backendLogs.map((log, idx) => (
                   <div key={`${log.ts}-${idx}`} className="flex gap-2">
@@ -123,16 +136,19 @@ export default function DebugPanel() {
                       {log.level.toLowerCase()}
                     </Badge>
                     <div className="min-w-0">
-                      <div className="text-muted-foreground">{log.ts} • {log.logger}</div>
-                      <div className="break-words whitespace-pre-wrap">{log.message}</div>
+                      <div className="text-muted-foreground">
+                        {log.ts} • {log.logger}
+                      </div>
+                      <div className="break-words whitespace-pre-wrap">
+                        {log.message}
+                      </div>
                     </div>
                   </div>
                 ))
-              )
-            )}
+              ))}
           </div>
         </Card>
       )}
     </div>
-  )
+  );
 }
