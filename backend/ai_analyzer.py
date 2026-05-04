@@ -30,7 +30,7 @@ AI_PROVIDER: str = os.getenv("AI_PROVIDER", "ollama").lower()
 
 # Ollama
 OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "gemma3:latest")
+OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "gemma4:latest")
 
 # Groq  (OpenAI-compatible)
 GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
