@@ -33,6 +33,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { OllamaStatusBar } from "@/components/OllamaWarning";
+import DevToolsPanel from "@/components/DevToolsPanel";
 
 const statusVariant: Record<
   string,
@@ -241,6 +242,8 @@ export default function Dashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <DevToolsPanel />
     </div>
   );
 }

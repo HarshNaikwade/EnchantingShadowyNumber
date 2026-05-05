@@ -1,0 +1,280 @@
+I am building a FastAPI + React RBI Compliance Checker and need TEMPORARY DEV DEBUG FEATURES to validate parsing and AI steps with FULL DATA VISIBILITY.
+
+This is strictly for development/debugging and must be easy to remove.
+
+---
+
+# 🔴 CORE REQUIREMENT
+
+I need to verify that:
+
+* The ENTIRE document is parsed (no truncation)
+* No pages are skipped
+* No text is lost during cleaning
+* Clause extraction uses full data
+* AI analysis works independently
+
+---
+
+# 🧠 BACKEND (FastAPI)
+
+## 1. FULL PARSED DOCUMENT DEBUG ENDPOINT
+
+Create:
+
+GET /api/dev/document/{id}/parsed
+
+Return EVERYTHING (no truncation):
+
+{
+"document_id": number,
+"file_name": string,
+"file_type": string,
+
+"raw_text_full": string,
+"raw_text_length": number,
+
+"cleaned_text_full": string,
+"cleaned_text_length": number,
+
+"pages": [
+{
+"page_number": number,
+"text": string,
+"char_count": number
+}
+],
+
+"detected_sections": [...],
+"extracted_clauses": [...],
+
+"metadata": {
+"dates": [...],
+"parties": [...],
+"headings": [...]
+},
+
+"validation": {
+"raw_vs_cleaned_diff": string,
+"missing_ratio": number,
+"raw_text_hash": string,
+"cleaned_text_hash": string
+}
+}
+
+---
+
+## 2. HASH VALIDATION (VERY IMPORTANT)
+
+Add hashing using SHA256:
+
+* raw_text_hash = sha256(raw_text_full)
+* cleaned_text_hash = sha256(cleaned_text_full)
+
+This ensures:
+
+* No silent mutation
+* Easy comparison across runs
+
+---
+
+## 3. TEXT DIFF CHECK
+
+Compute:
+
+raw_vs_cleaned_diff
+
+Simple approach:
+
+* Show removed segments OR
+* Use Python difflib to generate diff summary
+
+Also compute:
+
+missing_ratio =
+(len(raw_text) - len(cleaned_text)) / len(raw_text)
+
+This helps detect accidental truncation.
+
+---
+
+## 4. STRONG PARSER LOGGING
+
+Inside PDF/DOCX parsing:
+
+Log:
+
+* Total pages processed
+* Raw text length
+* Cleaned text length
+* First 1000 chars
+* Last 1000 chars
+* Clause count
+
+Example:
+
+print("PAGES:", total_pages)
+print("RAW LENGTH:", len(raw_text))
+print("CLEANED LENGTH:", len(cleaned_text))
+print("FIRST 1000:", raw_text[:1000])
+print("LAST 1000:", raw_text[-1000:])
+
+---
+
+## 5. RBI AI TEST ENDPOINT
+
+POST /api/dev/rbi/analyze
+
+* Fetch all RBI clauses
+* Run ONLY AI understanding step
+* Store in DB
+* Return:
+
+[
+{
+"clause_id": number,
+"text": string,
+"ai_understanding": string
+}
+]
+
+NO clause comparison should run.
+
+---
+
+# ⚛️ FRONTEND (React)
+
+Create: DevToolsPanel.tsx
+
+---
+
+## 1. DEBUG FULL PARSED DOCUMENT
+
+Button:
+
+"Debug Full Parsed Document"
+
+Calls:
+
+GET /api/dev/document/{id}/parsed
+
+On click:
+
+console.log("FULL PARSED RESPONSE", response)
+
+---
+
+## 2. UI DISPLAY
+
+Render sections:
+
+### A. Summary
+
+* Raw length
+* Cleaned length
+* Missing ratio
+* Hash values
+
+---
+
+### B. Raw Text Viewer
+
+* Full scrollable container
+* Show ENTIRE raw_text_full
+
+---
+
+### C. Cleaned Text Viewer
+
+* Same as above
+
+---
+
+### D. Page-by-Page Viewer
+
+Loop pages:
+
+Page 1
+[text]
+
+Page 2
+[text]
+
+---
+
+### E. Clause Viewer
+
+JSON.stringify(extracted_clauses, null, 2)
+
+---
+
+### F. Diff Viewer
+
+Show raw_vs_cleaned_diff in a scrollable box
+
+---
+
+## 3. RBI AI TEST BUTTON
+
+Button:
+
+"Test RBI AI Analysis"
+
+* Calls POST /api/dev/rbi/analyze
+* console.log full response
+* Display JSON preview
+
+---
+
+## 4. IMPORTANT UI RULES
+
+* DO NOT truncate text
+* DO NOT slice strings
+* Use scrollable containers instead
+* Handle large responses safely
+
+---
+
+# 🧩 INTEGRATION
+
+* Mount DevToolsPanel in main dashboard page
+* Only visible in development mode
+
+Example:
+
+if (import.meta.env.DEV) {
+render DevToolsPanel
+}
+
+---
+
+# 🧱 CONSTRAINTS
+
+* All routes under /api/dev/*
+* Add comments: # DEV ONLY
+* Do NOT modify production flow
+* Keep code modular and removable
+
+---
+
+# 🎯 FINAL GOAL
+
+I want to confidently verify:
+
+* Entire document is parsed (100%)
+* No text is lost or truncated
+* Parsing logic is correct
+* AI step works independently
+* Debugging is transparent and reliable
+
+---
+
+# OUTPUT REQUIRED
+
+1. FastAPI route implementations
+2. Hash + diff logic
+3. Where to plug logging in parser
+4. React DevToolsPanel component
+5. Integration example
+
+Keep everything clean, minimal, and dev-safe.

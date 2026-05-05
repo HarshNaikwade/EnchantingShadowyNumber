@@ -212,6 +212,13 @@ export const apiClient = {
 
   setOllamaUrl: (url: string): Promise<{ url: string }> =>
     api.post("/settings/ollama-url", { url }).then((r) => r.data),
+
+  // DEV ONLY
+  getDevParsed: (documentId: number): Promise<any> =>
+    api.get(`/dev/document/${documentId}/parsed`).then((r) => r.data),
+
+  testRbiAi: (): Promise<any[]> =>
+    api.post("/dev/rbi/analyze").then((r) => r.data),
 };
 
 export default apiClient;
