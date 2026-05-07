@@ -1,0 +1,326 @@
+I want you to completely refactor and reorganize my full-stack RBI Compliance Checker project for maintainability, scalability, developer experience, and production readiness.
+
+Current structure:
+
+* frontend/ → React + Vite + TypeScript
+* backend/ → FastAPI + SQLite + Ollama integration
+
+Right now the project feels loosely organized and difficult to scale. I want a professional monorepo-style structure with clean separation of concerns, shared configuration, centralized startup scripts, and improved developer workflow.
+
+IMPORTANT:
+Do NOT rewrite the business logic unless necessary.
+Focus on:
+
+* architecture
+* folder structure
+* code organization
+* optimization
+* maintainability
+* developer experience
+* startup automation
+
+---
+
+# 🔥 PRIMARY GOALS
+
+I want:
+
+1. Better file/folder structure
+2. Cleaner backend architecture
+3. Cleaner frontend architecture
+4. Shared root-level startup system
+5. One-command project setup
+6. One-command project run
+7. Better environment management
+8. Better logging/debugging
+9. Better scalability for future features
+10. Cleaner imports and modularity
+
+---
+
+# 📁 TARGET PROJECT STRUCTURE
+
+Refactor into a professional monorepo structure like this:
+
+project-root/
+│
+├── apps/
+│   ├── backend/
+│   └── frontend/
+│
+├── scripts/
+│   ├── setup.py
+│   ├── run.py
+│   ├── dev.py
+│   └── healthcheck.py
+│
+├── shared/
+│   ├── constants/
+│   ├── types/
+│   ├── configs/
+│   └── utils/
+│
+├── uploads/
+├── logs/
+├── docs/
+├── .env
+├── .env.example
+├── README.md
+├── requirements.txt
+├── package.json
+└── docker-compose.yml
+
+---
+
+# ⚡ ROOT-LEVEL AUTOMATION (VERY IMPORTANT)
+
+I want a SINGLE root-level command to fully setup and run the project.
+
+Example:
+
+python scripts/setup.py
+
+This should:
+
+* create virtual environment if missing
+* install backend requirements
+* install frontend npm packages
+* verify Ollama exists
+* create uploads/ and logs/ directories
+* validate .env
+* print success/failure logs
+
+---
+
+Then:
+
+python scripts/run.py
+
+This should:
+
+* start FastAPI backend
+* start React frontend
+* run both concurrently
+* show colored logs
+* detect crashes
+* gracefully stop both processes
+
+I should NOT need to:
+
+* cd backend
+* cd frontend
+
+Everything should work from root.
+
+---
+
+# 🧠 BACKEND REFACTOR (FastAPI)
+
+Refactor backend into scalable modular architecture.
+
+Current backend is becoming difficult to maintain.
+
+Use structure like:
+
+apps/backend/
+│
+├── api/
+│   ├── routes/
+│   ├── dependencies/
+│   └── middleware/
+│
+├── core/
+│   ├── config.py
+│   ├── logging.py
+│   └── security.py
+│
+├── db/
+│   ├── models/
+│   ├── schemas/
+│   ├── repositories/
+│   └── session.py
+│
+├── services/
+│   ├── ai/
+│   ├── parsing/
+│   ├── compliance/
+│   ├── reporting/
+│   └── storage/
+│
+├── workers/
+├── utils/
+├── tests/
+└── main.py
+
+---
+
+# ⚛️ FRONTEND REFACTOR (React)
+
+Refactor frontend into feature-based architecture.
+
+Use structure like:
+
+apps/frontend/src/
+│
+├── components/
+├── features/
+│   ├── documents/
+│   ├── compliance/
+│   ├── clauses/
+│   └── sessions/
+│
+├── services/
+├── hooks/
+├── layouts/
+├── pages/
+├── stores/
+├── types/
+├── utils/
+├── routes/
+└── main.tsx
+
+---
+
+# 🚀 PERFORMANCE + OPTIMIZATION
+
+Improve:
+
+* API organization
+* Query handling
+* Error handling
+* Logging
+* Async execution
+* Type safety
+* Import cleanliness
+* Reusability
+* Separation of concerns
+
+Backend:
+
+* move business logic out of routes
+* add service layer
+* centralize DB access
+* centralize AI/Ollama calls
+* add structured logging
+
+Frontend:
+
+* reduce prop drilling
+* centralize API layer
+* improve TanStack Query usage
+* add reusable UI patterns
+* improve loading/error states
+
+---
+
+# 🔧 CONFIGURATION IMPROVEMENTS
+
+Centralize configuration.
+
+Add:
+
+* .env.example
+* typed config loaders
+* validation for required env vars
+* shared constants
+
+Environment variables should be properly grouped and documented.
+
+---
+
+# 🪵 LOGGING + DEBUGGING
+
+Add proper logging system:
+
+* backend logs/
+* request logging
+* AI request logging
+* parsing logging
+* startup logging
+
+Use rotating logs if possible.
+
+---
+
+# 🐳 OPTIONAL DOCKER SUPPORT
+
+Add:
+
+* Dockerfile for frontend
+* Dockerfile for backend
+* docker-compose.yml
+
+Should support:
+
+docker compose up
+
+---
+
+# 🧪 TESTING STRUCTURE
+
+Prepare project for future tests.
+
+Add folders:
+
+* backend/tests
+* frontend testing setup
+
+Do NOT implement full tests yet unless simple.
+
+---
+
+# 📚 DOCUMENTATION
+
+Update README with:
+
+* setup instructions
+* run instructions
+* architecture overview
+* env vars
+* troubleshooting
+* Ollama setup
+
+---
+
+# 🚨 IMPORTANT CONSTRAINTS
+
+* Preserve existing functionality
+* Do NOT break current APIs unless improving structure
+* Keep SQLite support
+* Keep Ollama integration
+* Keep local-first design
+* Keep React + Vite
+* Keep FastAPI
+
+---
+
+# 🎯 FINAL RESULT EXPECTED
+
+After refactor, I want to run:
+
+python scripts/setup.py
+
+Then:
+
+python scripts/run.py
+
+And the ENTIRE project should start automatically.
+
+No manual frontend/backend setup.
+
+---
+
+# OUTPUT REQUIRED
+
+1. New folder structure
+2. Refactored architecture
+3. Root setup script
+4. Root run script
+5. Backend refactor
+6. Frontend refactor
+7. Updated configs
+8. Updated README
+9. Docker support
+10. Migration notes from old structure
+
+Keep everything production-grade, modular, scalable, and easy to maintain.
