@@ -6,7 +6,7 @@ A professional full-stack application for analysing legal agreements (PDF / DOCX
 
 - Upload PDF and DOCX legal agreements
 - Automatic AI-powered compliance analysis against 7 default RBI clauses (fully editable)
-- Supports **Ollama** (local, private) and **Groq** (cloud, fast) — switchable at runtime
+- Supports **LMStudio** (local, OpenAI-compatible), **Ollama** (local, private), and **Groq** (cloud, fast) — switchable at runtime
 - Three-table compliance report: RBI Clauses · Agreement Understanding · Compliance Status
 - Downloadable PDF reports per document or per session
 - Real-time AI progress tracking during analysis
@@ -49,18 +49,35 @@ python scripts/setup.py
 
 ### 2. Configure AI provider
 
-**Option A — Ollama (local, recommended)**
+**Option A — LMStudio (local, OpenAI-compatible, recommended)**
+
+```bash
+# Download from https://lmstudio.ai
+# 1. Install LMStudio
+# 2. Open LMStudio → Models tab → Download "Gemma 4" (or your preferred model)
+# 3. Go to Local Server tab → Select Gemma 4 → Click "Start Server"
+# Then:
+export AI_PROVIDER=lmstudio
+export LMSTUDIO_BASE_URL=http://localhost:1234
+export LMSTUDIO_MODEL=google/gemma-4-e4b
+```
+
+**Option B — Ollama (local, private)**
+
 ```bash
 # Install from https://ollama.ai, then:
-ollama pull llama3
+ollama pull gemma4
 ollama serve
 ```
 
-**Option B — Groq (cloud)**
+**Option C — Groq (cloud)**
+
 ```bash
 cp .env.example .env
 # Set GROQ_API_KEY and AI_PROVIDER=groq in .env
 ```
+
+See [LMSTUDIO_SETUP.md](LMSTUDIO_SETUP.md) for detailed LMStudio installation and troubleshooting.
 
 ### 3. Start development servers
 
@@ -68,8 +85,8 @@ cp .env.example .env
 python scripts/dev.py
 ```
 
-- Frontend: http://localhost:5000  
-- Backend API: http://localhost:8000  
+- Frontend: http://localhost:5000
+- Backend API: http://localhost:8000
 - API docs: http://localhost:8000/docs
 
 ### 4. Health check
@@ -104,31 +121,33 @@ docker-compose up --build
 
 ## API Reference
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/health` | Backend + AI connectivity |
-| GET | `/api/analysis/` | List all sessions |
-| POST | `/api/analysis/create` | Create session |
-| GET | `/api/analysis/{id}` | Session detail with documents |
-| DELETE | `/api/analysis/{id}` | Delete session |
-| POST | `/api/document/upload` | Upload document (triggers AI) |
-| GET | `/api/document/{id}/status` | Poll processing status |
-| GET | `/api/document/{id}/progress` | Live AI step progress |
-| POST | `/api/document/{id}/rerun` | Re-run AI analysis |
-| PATCH | `/api/document/{id}/dates` | Update effective / creation date |
-| DELETE | `/api/document/{id}` | Delete document |
-| GET | `/api/clauses/` | List RBI clauses |
-| POST | `/api/clauses/` | Create RBI clause |
-| PUT | `/api/clauses/{id}` | Update RBI clause |
-| DELETE | `/api/clauses/{id}` | Delete RBI clause |
-| POST | `/api/clauses/analyze` | Re-generate AI understanding |
-| GET | `/api/report/{session_id}` | Full session PDF report |
-| GET | `/api/report/{session_id}/document/{doc_id}` | Per-document PDF |
-| GET | `/api/settings/provider` | Get active AI provider |
-| POST | `/api/settings/provider` | Switch AI provider |
-| GET | `/api/settings/ollama-url` | Get Ollama URL |
-| POST | `/api/settings/ollama-url` | Update Ollama URL |
-| GET | `/api/debug/logs` | Tail backend logs |
+| Method | Endpoint                                     | Description                      |
+| ------ | -------------------------------------------- | -------------------------------- |
+| GET    | `/api/health`                                | Backend + AI connectivity        |
+| GET    | `/api/analysis/`                             | List all sessions                |
+| POST   | `/api/analysis/create`                       | Create session                   |
+| GET    | `/api/analysis/{id}`                         | Session detail with documents    |
+| DELETE | `/api/analysis/{id}`                         | Delete session                   |
+| POST   | `/api/document/upload`                       | Upload document (triggers AI)    |
+| GET    | `/api/document/{id}/status`                  | Poll processing status           |
+| GET    | `/api/document/{id}/progress`                | Live AI step progress            |
+| POST   | `/api/document/{id}/rerun`                   | Re-run AI analysis               |
+| PATCH  | `/api/document/{id}/dates`                   | Update effective / creation date |
+| DELETE | `/api/document/{id}`                         | Delete document                  |
+| GET    | `/api/clauses/`                              | List RBI clauses                 |
+| POST   | `/api/clauses/`                              | Create RBI clause                |
+| PUT    | `/api/clauses/{id}`                          | Update RBI clause                |
+| DELETE | `/api/clauses/{id}`                          | Delete RBI clause                |
+| POST   | `/api/clauses/analyze`                       | Re-generate AI understanding     |
+| GET    | `/api/report/{session_id}`                   | Full session PDF report          |
+| GET    | `/api/report/{session_id}/document/{doc_id}` | Per-document PDF                 |
+| GET    | `/api/settings/provider`                     | Get active AI provider           |
+| POST   | `/api/settings/provider`                     | Switch AI provider               |
+| GET    | `/api/settings/ollama-url`                   | Get Ollama URL                   |
+| POST   | `/api/settings/ollama-url`                   | Update Ollama URL                |
+| GET    | `/api/settings/lmstudio-url`                 | Get LMStudio URL                 |
+| POST   | `/api/settings/lmstudio-url`                 | Update LMStudio URL              |
+| GET    | `/api/debug/logs`                            | Tail backend logs                |
 
 ---
 
@@ -136,28 +155,32 @@ docker-compose up --build
 
 Copy `.env.example` to `.env` and adjust values.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `BACKEND_PORT` | `8000` | FastAPI listen port |
-| `AI_PROVIDER` | `ollama` | `ollama` or `groq` |
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama API URL |
-| `GROQ_API_KEY` | — | Groq API key |
-| `MAX_UPLOAD_MB` | `50` | Max file upload size |
-| `UPLOAD_DIR` | `<root>/uploads` | Document storage path |
+| Variable            | Default                   | Description                     |
+| ------------------- | ------------------------- | ------------------------------- |
+| `BACKEND_PORT`      | `8000`                    | FastAPI listen port             |
+| `AI_PROVIDER`       | `lmstudio`                | `lmstudio`, `ollama`, or `groq` |
+| `LMSTUDIO_BASE_URL` | `http://localhost:1234`   | LMStudio API URL                |
+| `LMSTUDIO_MODEL`    | `google/gemma-4-e4b`      | LMStudio model name             |
+| `OLLAMA_BASE_URL`   | `http://localhost:11434`  | Ollama API URL                  |
+| `OLLAMA_MODEL`      | `gemma4:latest`           | Ollama model name               |
+| `GROQ_API_KEY`      | —                         | Groq API key                    |
+| `GROQ_MODEL`        | `llama-3.3-70b-versatile` | Groq model name                 |
+| `MAX_UPLOAD_MB`     | `50`                      | Max file upload size            |
+| `UPLOAD_DIR`        | `<root>/uploads`          | Document storage path           |
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React 18, Vite 5, TypeScript, Tailwind CSS v4, Radix UI |
-| Backend | Python 3.11, FastAPI, SQLAlchemy, Pydantic v2 |
-| Database | SQLite |
-| AI — local | Ollama (llama3 / mistral) |
-| AI — cloud | Groq API (llama3-70b-8192) |
-| Document parsing | pdfplumber, python-docx, pytesseract (OCR) |
-| Reports | reportlab |
+| Layer            | Technology                                              |
+| ---------------- | ------------------------------------------------------- |
+| Frontend         | React 18, Vite 5, TypeScript, Tailwind CSS v4, Radix UI |
+| Backend          | Python 3.11, FastAPI, SQLAlchemy, Pydantic v2           |
+| Database         | SQLite                                                  |
+| AI — local       | Ollama (llama3 / mistral)                               |
+| AI — cloud       | Groq API (llama3-70b-8192)                              |
+| Document parsing | pdfplumber, python-docx, pytesseract (OCR)              |
+| Reports          | reportlab                                               |
 
 ---
 

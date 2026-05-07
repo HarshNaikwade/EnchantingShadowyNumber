@@ -69,7 +69,7 @@ app.include_router(dev.router)
 
 @app.get("/api/health")
 async def health_check():
-    from services.ai.analyzer import check_ai_connection, get_active_provider, get_ai_model, get_ollama_base_url
+    from services.ai.analyzer import check_ai_connection, get_active_provider, get_ai_model, get_ollama_base_url, get_lmstudio_base_url
     ai_connected = await check_ai_connection()
     provider = get_active_provider()
     return {
@@ -79,6 +79,8 @@ async def health_check():
         "ai_model": get_ai_model(),
         "ollama_connected": ai_connected if provider == "ollama" else False,
         "ollama_url": get_ollama_base_url(),
+        "lmstudio_connected": ai_connected if provider == "lmstudio" else False,
+        "lmstudio_url": get_lmstudio_base_url(),
     }
 
 

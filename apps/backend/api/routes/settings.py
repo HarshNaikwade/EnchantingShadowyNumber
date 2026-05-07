@@ -4,7 +4,7 @@ from core.runtime_config import get_setting, set_setting
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
-VALID_PROVIDERS = {"ollama", "groq"}
+VALID_PROVIDERS = {"ollama", "groq", "lmstudio"}
 
 
 class ProviderUpdate(BaseModel):
@@ -12,6 +12,10 @@ class ProviderUpdate(BaseModel):
 
 
 class OllamaUrlUpdate(BaseModel):
+    url: str
+
+
+class LMStudioUrlUpdate(BaseModel):
     url: str
 
 
@@ -42,4 +46,18 @@ def update_ollama_url(body: OllamaUrlUpdate):
     if not url.startswith(("http://", "https://")):
         raise HTTPException(status_code=400, detail="URL must start with http:// or https://")
     set_setting("ollama_url", url)
+    return {"url": url}
+
+
+@router.get("/lmstudio-url")
+def get_lmstudio_url():
+    return {"url": get_setting("lmstudio_url")}
+
+
+@router.post("/lmstudio-url")
+def update_lmstudio_url(body: LMStudioUrlUpdate):
+    url = body.url.strip().rstrip("/")
+    if not url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="URL must start with http:// or https://")
+    set_setting("lmstudio_url", url)
     return {"url": url}

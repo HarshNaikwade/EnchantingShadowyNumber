@@ -61,6 +61,8 @@ export interface HealthStatus {
   ai_model: string;
   ollama_connected: boolean;
   ollama_url: string;
+  lmstudio_connected: boolean;
+  lmstudio_url: string;
 }
 
 export interface RBIClausePayload {
@@ -198,7 +200,9 @@ export const apiClient = {
   getBackendLogs: (limit = 200): Promise<BackendLogResponse> =>
     api.get(`/debug/logs?limit=${limit}`).then((r) => r.data),
 
-  rerunDocument: (documentId: number): Promise<{ message: string; document_id: number }> =>
+  rerunDocument: (
+    documentId: number,
+  ): Promise<{ message: string; document_id: number }> =>
     api.post(`/document/${documentId}/rerun`).then((r) => r.data),
 
   getProvider: (): Promise<{ provider: string }> =>
@@ -212,6 +216,12 @@ export const apiClient = {
 
   setOllamaUrl: (url: string): Promise<{ url: string }> =>
     api.post("/settings/ollama-url", { url }).then((r) => r.data),
+
+  getLMStudioUrl: (): Promise<{ url: string }> =>
+    api.get("/settings/lmstudio-url").then((r) => r.data),
+
+  setLMStudioUrl: (url: string): Promise<{ url: string }> =>
+    api.post("/settings/lmstudio-url", { url }).then((r) => r.data),
 
   // DEV ONLY
   getDevParsed: (documentId: number): Promise<any> =>

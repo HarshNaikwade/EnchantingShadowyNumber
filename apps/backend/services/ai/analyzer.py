@@ -1,14 +1,19 @@
 """
 AI provider abstraction layer.
-Supports Ollama (local) and Groq (cloud) via the AI_PROVIDER env var.
+Supports Ollama (local), LMStudio (local), and Groq (cloud) via the AI_PROVIDER env var.
 
 Quick-start:
   Ollama (default):
     AI_PROVIDER=ollama
     OLLAMA_BASE_URL=http://localhost:11434
-    OLLAMA_MODEL=gemma3:latest
+    OLLAMA_MODEL=gemma4:latest
 
-  Groq:
+  LMStudio (local, OpenAI-compatible):
+    AI_PROVIDER=lmstudio
+    LMSTUDIO_BASE_URL=http://localhost:1234
+    LMSTUDIO_MODEL=gemma4
+
+  Groq (cloud):
     AI_PROVIDER=groq
     GROQ_API_KEY=gsk_...
     GROQ_MODEL=llama-3.3-70b-versatile
@@ -41,6 +46,19 @@ def get_ollama_base_url() -> str:
     except Exception:
         return OLLAMA_BASE_URL
 
+# LMStudio (local, OpenAI-compatible)
+LMSTUDIO_BASE_URL: str = os.getenv("LMSTUDIO_BASE_URL", "http://localhost:1234")
+LMSTUDIO_MODEL: str = os.getenv("LMSTUDIO_MODEL", "gemma4")
+
+
+def get_lmstudio_base_url() -> str:
+    """Return the active LMStudio base URL (runtime-configurable)."""
+    try:
+        from core.runtime_config import get_setting
+        return get_setting("lmstudio_url", LMSTUDIO_BASE_URL)
+    except Exception:
+        return LMSTUDIO_BASE_URL
+
 # Groq  (OpenAI-compatible)
 GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
@@ -59,7 +77,13 @@ def get_active_provider() -> str:
 
 
 def get_ai_model() -> str:
-    return GROQ_MODEL if get_active_provider() == "groq" else OLLAMA_MODEL
+    provider = get_active_provider()
+    if provider == "groq":
+        return GROQ_MODEL
+    elif provider == "lmstudio":
+        return LMSTUDIO_MODEL
+    else:
+        return OLLAMA_MODEL
 
 
 # ---------------------------------------------------------------------------
@@ -69,6 +93,15 @@ async def check_ollama_connection() -> bool:
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             r = await client.get(f"{get_ollama_base_url()}/api/tags")
+            return r.status_code == 200
+    except Exception:
+        return False
+
+
+async def check_lmstudio_connection() -> bool:
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.get(f"{get_lmstudio_base_url()}/v1/models")
             return r.status_code == 200
     except Exception:
         return False
@@ -91,8 +124,11 @@ async def check_groq_connection() -> bool:
 
 async def check_ai_connection() -> bool:
     """Check whether the active AI provider is reachable."""
-    if get_active_provider() == "groq":
+    provider = get_active_provider()
+    if provider == "groq":
         return await check_groq_connection()
+    elif provider == "lmstudio":
+        return await check_lmstudio_connection()
     return await check_ollama_connection()
 
 
@@ -117,6 +153,32 @@ async def resolve_ollama_model(requested: Optional[str] = None) -> Optional[str]
         return requested
     if requested:
         logger.warning("Ollama model '%s' not found; falling back to '%s'.", requested, models[0])
+    return models[0]
+
+
+# ---------------------------------------------------------------------------
+# LMStudio: list / resolve models (OpenAI-compatible)
+# ---------------------------------------------------------------------------
+async def list_lmstudio_models() -> list[str]:
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.get(f"{get_lmstudio_base_url()}/v1/models")
+            r.raise_for_status()
+            data = r.json()
+            return [m.get("id") for m in data.get("data", []) if m.get("id")]
+    except Exception as e:
+        logger.warning("Failed to list LMStudio models: %s", e)
+        return []
+
+
+async def resolve_lmstudio_model(requested: Optional[str] = None) -> Optional[str]:
+    models = await list_lmstudio_models()
+    if not models:
+        return None
+    if requested and requested in models:
+        return requested
+    if requested:
+        logger.warning("LMStudio model '%s' not found; falling back to '%s'.", requested, models[0])
     return models[0]
 
 
@@ -181,6 +243,58 @@ async def ollama_generate(
         if not output:
             logger.warning("Ollama streaming produced no output for model=%s", model)
         return output
+
+
+# ---------------------------------------------------------------------------
+# LMStudio generate (OpenAI-compatible chat completions)
+# ---------------------------------------------------------------------------
+async def lmstudio_generate(
+    prompt: str,
+    model: Optional[str] = None,
+    on_chunk: Optional[Callable[[str], None]] = None,
+) -> str:
+    if model is None:
+        model = await resolve_lmstudio_model(LMSTUDIO_MODEL)
+    if not model:
+        logger.warning("No LMStudio models available.")
+        return ""
+
+    headers = {"Content-Type": "application/json"}
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.1,
+        "max_tokens": 2048,
+        "stream": False,
+    }
+
+    logger.debug("LMStudio request → model=%s prompt_len=%d", model, len(prompt))
+
+    base_url = get_lmstudio_base_url()
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        response = await client.post(
+            f"{base_url}/v1/chat/completions",
+            headers=headers,
+            json=payload,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+    try:
+        raw = data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError) as exc:
+        logger.error("Unexpected LMStudio response structure (%s). Full response: %s", exc, json.dumps(data)[:500])
+        return ""
+
+    logger.debug("LMStudio raw response (%d chars): %s", len(raw), raw[:300])
+    if not raw:
+        logger.warning("LMStudio returned empty content. Full response: %s", json.dumps(data)[:500])
+
+    # If caller wants streaming-style chunks, simulate by calling on_chunk once
+    if on_chunk and raw:
+        on_chunk(raw)
+
+    return raw
 
 
 # ---------------------------------------------------------------------------
@@ -259,9 +373,12 @@ async def ai_generate(
     model: Optional[str] = None,
     on_chunk: Optional[Callable[[str], None]] = None,
 ) -> str:
-    """Call the active AI provider (ollama or groq) and return the text output."""
-    if get_active_provider() == "groq":
+    """Call the active AI provider (ollama, lmstudio, or groq) and return the text output."""
+    provider = get_active_provider()
+    if provider == "groq":
         return await groq_generate(prompt, model=model, on_chunk=on_chunk)
+    elif provider == "lmstudio":
+        return await lmstudio_generate(prompt, model=model, on_chunk=on_chunk)
     return await ollama_generate(prompt, model=model, on_chunk=on_chunk)
 
 
