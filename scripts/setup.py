@@ -3,8 +3,16 @@
 import subprocess
 import sys
 import os
+import venv
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+VENV_DIR = os.path.join(ROOT, ".venv")
+
+
+def venv_python():
+    if os.name == "nt":
+        return os.path.join(VENV_DIR, "Scripts", "python.exe")
+    return os.path.join(VENV_DIR, "bin", "python")
 
 
 def run(cmd, cwd=None, check=True):
@@ -17,26 +25,34 @@ def main():
     print("  RBI Compliance Checker — Project Setup")
     print("=" * 60)
 
+    # Python virtual environment
+    print("\n[1/5] Setting up Python virtual environment...")
+    if not os.path.exists(venv_python()):
+        print(f"  Creating {VENV_DIR}")
+        venv.EnvBuilder(with_pip=True).create(VENV_DIR)
+    else:
+        print(f"  Reusing {VENV_DIR}")
+
     # Python dependencies
-    print("\n[1/4] Installing Python dependencies...")
-    run(f"{sys.executable} -m pip install -r apps/backend/requirements.txt")
+    print("\n[2/5] Installing Python dependencies...")
+    run(f'"{venv_python()}" -m pip install -r apps/backend/requirements.txt')
 
     # Node dependencies
-    print("\n[2/4] Installing Node dependencies...")
+    print("\n[3/5] Installing Node dependencies...")
     if not os.path.exists(os.path.join(ROOT, "node_modules")):
         run("npm install")
     else:
         print("  node_modules already exists, skipping.")
 
     # Required directories
-    print("\n[3/4] Creating required directories...")
+    print("\n[4/5] Creating required directories...")
     for d in ["uploads", "logs"]:
         path = os.path.join(ROOT, d)
         os.makedirs(path, exist_ok=True)
         print(f"  {path}")
 
     # Verify Ollama (optional)
-    print("\n[4/4] Checking Ollama availability...")
+    print("\n[5/5] Checking Ollama availability...")
     result = run("ollama list", check=False)
     if result.returncode != 0:
         print("  Ollama not found. Install from https://ollama.ai")

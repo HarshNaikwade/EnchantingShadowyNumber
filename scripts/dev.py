@@ -10,6 +10,13 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 procs = []
 
 
+def python_bin():
+    venv_python = os.path.join(ROOT, ".venv", "Scripts", "python.exe")
+    if os.name != "nt":
+        venv_python = os.path.join(ROOT, ".venv", "bin", "python")
+    return venv_python if os.path.exists(venv_python) else sys.executable
+
+
 def kill_all(sig=None, frame=None):
     print("\nShutting down...")
     for p in procs:
@@ -28,7 +35,7 @@ def main():
     env = os.environ.copy()
 
     backend = subprocess.Popen(
-        [sys.executable, "main.py"],
+        [python_bin(), "main.py"],
         cwd=os.path.join(ROOT, "apps", "backend"),
         env=env,
     )
@@ -36,8 +43,10 @@ def main():
     print(f"Backend started  (PID {backend.pid}) — http://localhost:8000")
 
     vite_bin = os.path.join(ROOT, "node_modules", ".bin", "vite")
+    if os.name == "nt":
+        vite_bin += ".cmd"
     frontend = subprocess.Popen(
-        ["node", vite_bin, "--port", "5000", "--host", "0.0.0.0"],
+        [vite_bin, "--port", "5000", "--host", "0.0.0.0"],
         cwd=os.path.join(ROOT, "apps", "frontend"),
         env=env,
     )
