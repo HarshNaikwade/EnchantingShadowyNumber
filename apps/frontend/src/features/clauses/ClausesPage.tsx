@@ -337,14 +337,26 @@ export default function RBIClausesSettings() {
                     </div>
                   </div>
                 </CardHeader>
-                {clause.predefined_meaning && (
-                  <CardContent className="pt-0 pb-3">
-                    <p className="text-xs text-muted-foreground leading-relaxed border-t pt-2">
-                      <span className="font-medium text-gray-600">
-                        Meaning:{" "}
-                      </span>
-                      {clause.predefined_meaning}
-                    </p>
+                {(clause.predefined_meaning || clause.ai_understanding) && (
+                  <CardContent className="pt-0 pb-3 space-y-2">
+                    {clause.predefined_meaning && (
+                      <p className="text-xs text-muted-foreground leading-relaxed border-t pt-2 pb-2">
+                        <span className="font-medium text-gray-600">
+                          Meaning:{" "}
+                        </span>
+                        {clause.predefined_meaning}
+                      </p>
+                    )}
+                    {clause.ai_understanding && (
+                      <div className="border-t pt-2">
+                        <p className="text-xs font-medium text-gray-600 mb-1">
+                          AI Understanding:
+                        </p>
+                        <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">
+                          {clause.ai_understanding}
+                        </p>
+                      </div>
+                    )}
                   </CardContent>
                 )}
               </Card>

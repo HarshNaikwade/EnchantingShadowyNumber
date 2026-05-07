@@ -83,7 +83,9 @@ async def _run_ai_analysis_async(document_id: int, db_url: str):
 
         if provider == "groq":
             resolved_model = get_ai_model()
-        else:
+        elif provider == "lmstudio":
+            resolved_model = get_ai_model()  # LMStudio uses the configured model directly
+        else:  # ollama
             resolved_model = await resolve_ollama_model(OLLAMA_MODEL)
             if not resolved_model:
                 logger.warning("No Ollama models available, skipping AI analysis")
@@ -98,6 +100,7 @@ async def _run_ai_analysis_async(document_id: int, db_url: str):
                 understanding = await generate_rbi_understanding(
                     rbi_clause.clause_text,
                     rbi_clause.predefined_meaning,
+                    provider=provider,
                     model=resolved_model,
                     on_chunk=lambda chunk: append_chunk(document_id, chunk)
                 )
@@ -107,6 +110,7 @@ async def _run_ai_analysis_async(document_id: int, db_url: str):
         progress_update(document_id, "extract_agreement", "Extracting agreement clauses")
         agreement_clauses = await extract_agreement_clauses(
             doc.extracted_text,
+            provider=provider,
             model=resolved_model,
             on_chunk=lambda chunk: append_chunk(document_id, chunk)
         )
@@ -129,7 +133,9 @@ async def _run_ai_analysis_async(document_id: int, db_url: str):
                 agreement_clauses,
                 rbi_clause.clause_text,
                 rbi_clause.id,
-                doc.file_type,
+                rbi_ai_understanding=rbi_clause.ai_understanding,
+                document_type=doc.file_type,
+                provider=provider,
                 model=resolved_model,
                 on_chunk=lambda chunk: append_chunk(document_id, chunk)
             )

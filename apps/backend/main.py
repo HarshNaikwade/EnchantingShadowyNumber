@@ -1,8 +1,15 @@
 import os
 import logging
+from pathlib import Path
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+
+# Load .env file from project root
+env_path = Path(__file__).parent.parent.parent / ".env"
+if env_path.exists():
+    load_dotenv(env_path)
 
 from db.session import engine, Base, SessionLocal
 from db.models import RBIClause

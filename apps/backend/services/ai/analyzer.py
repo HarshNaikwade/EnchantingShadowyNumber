@@ -207,7 +207,8 @@ async def ollama_generate(
     logger.debug("Ollama request → model=%s stream=%s prompt_len=%d", model, use_stream, len(prompt))
 
     base_url = get_ollama_base_url()
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    # Increased timeout to 5 minutes (300s) to allow slow models to respond
+    async with httpx.AsyncClient(timeout=300.0) as client:
         if not use_stream:
             # ── Non-streaming (most reliable) ──────────────────────────────
             response = await client.post(f"{base_url}/api/generate", json=payload)
@@ -271,14 +272,22 @@ async def lmstudio_generate(
     logger.debug("LMStudio request → model=%s prompt_len=%d", model, len(prompt))
 
     base_url = get_lmstudio_base_url()
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        response = await client.post(
-            f"{base_url}/v1/chat/completions",
-            headers=headers,
-            json=payload,
-        )
-        response.raise_for_status()
-        data = response.json()
+    # Increased timeout to 5 minutes (300s) to allow slow models to respond
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        try:
+            response = await client.post(
+                f"{base_url}/v1/chat/completions",
+                headers=headers,
+                json=payload,
+            )
+            response.raise_for_status()
+            data = response.json()
+        except httpx.TimeoutException:
+            logger.error("LMStudio request timed out after 300 seconds. Model may be too slow or overloaded.")
+            return ""
+        except httpx.RequestError as e:
+            logger.error("LMStudio request failed: %s", e)
+            return ""
 
     try:
         raw = data["choices"][0]["message"]["content"]
@@ -370,11 +379,15 @@ async def groq_generate(
 # ---------------------------------------------------------------------------
 async def ai_generate(
     prompt: str,
+    provider: Optional[str] = None,
     model: Optional[str] = None,
     on_chunk: Optional[Callable[[str], None]] = None,
 ) -> str:
     """Call the active AI provider (ollama, lmstudio, or groq) and return the text output."""
-    provider = get_active_provider()
+    # Use provided provider, or detect from current active provider
+    if provider is None:
+        provider = get_active_provider()
+    
     if provider == "groq":
         return await groq_generate(prompt, model=model, on_chunk=on_chunk)
     elif provider == "lmstudio":
@@ -424,6 +437,7 @@ def extract_json_from_response(text: str) -> Optional[dict | list]:
 # ---------------------------------------------------------------------------
 async def extract_agreement_clauses(
     text: str,
+    provider: Optional[str] = None,
     model: Optional[str] = None,
     on_chunk: Optional[Callable[[str], None]] = None,
 ) -> list:
@@ -449,7 +463,7 @@ Agreement Text:
 
 Respond ONLY with valid JSON. No explanations outside the JSON structure."""
 
-    response = await ai_generate(prompt, model=model, on_chunk=on_chunk)
+    response = await ai_generate(prompt, provider=provider, model=model, on_chunk=on_chunk)
     if not response:
         logger.warning("extract_agreement_clauses: AI returned no output.")
         return []
@@ -470,9 +484,11 @@ Respond ONLY with valid JSON. No explanations outside the JSON structure."""
 async def generate_rbi_understanding(
     clause_text: str,
     predefined_meaning: Optional[str],
+    provider: Optional[str] = None,
     model: Optional[str] = None,
     on_chunk: Optional[Callable[[str], None]] = None,
 ) -> str:
+    import time
     predefined = predefined_meaning or "No predefined meaning was provided."
     prompt = f"""You are an RBI (Reserve Bank of India) compliance expert.
 
@@ -488,7 +504,12 @@ Respond with a JSON object:
 
 Respond ONLY with valid JSON."""
 
-    response = await ai_generate(prompt, model=model, on_chunk=on_chunk)
+    logger.info("Generating RBI understanding (provider=%s, model=%s, clause_len=%d)...", provider, model, len(clause_text))
+    start = time.time()
+    response = await ai_generate(prompt, provider=provider, model=model, on_chunk=on_chunk)
+    elapsed = time.time() - start
+    logger.info("RBI understanding generation completed in %.1fs", elapsed)
+    
     if not response:
         logger.warning("generate_rbi_understanding: AI returned no output; using predefined meaning.")
         return predefined
@@ -508,7 +529,9 @@ async def check_compliance(
     agreement_clauses: list,
     rbi_clause_text: str,
     rbi_clause_id: int,
+    rbi_ai_understanding: Optional[str] = None,
     document_type: str = "Agreement",
+    provider: Optional[str] = None,
     model: Optional[str] = None,
     on_chunk: Optional[Callable[[str], None]] = None,
 ) -> dict:
@@ -522,12 +545,15 @@ async def check_compliance(
     elif document_type == "MOU":
         incremental_instruction = "Note: This is an MOU. Check if it supersedes the main agreement and flag any conflicts with RBI requirements."
 
+    # Use pre-calculated AI understanding if available, otherwise use clause text
+    rbi_requirement_text = rbi_ai_understanding if rbi_ai_understanding else rbi_clause_text
+
     prompt = f"""You are an RBI compliance checker. Compare the agreement clauses against the RBI requirement.
 
 {incremental_instruction}
 
 RBI Requirement (Clause ID: {rbi_clause_id}):
-{rbi_clause_text}
+{rbi_requirement_text}
 
 Agreement Clauses (excerpt):
 {clauses_text}
@@ -538,7 +564,6 @@ Determine compliance and respond with this exact JSON structure:
   "risk_score": <number 0-100, where 0=fully compliant, 100=fully non-compliant>,
   "agreement_reference": "Clause X.X, Page Y (or 'Approximate Reference: ...' or 'Not Found')",
   "ai_understanding_agreement": "How the agreement addresses (or fails to address) this RBI requirement",
-  "ai_understanding_rbi": "What this RBI clause specifically requires",
   "notes": "Any additional compliance observations"
 }}
 
@@ -558,7 +583,7 @@ Respond ONLY with valid JSON."""
         "ai_understanding_rbi": rbi_clause_text,
     }
 
-    response = await ai_generate(prompt, model=model, on_chunk=on_chunk)
+    response = await ai_generate(prompt, provider=provider, model=model, on_chunk=on_chunk)
     if not response:
         logger.warning("check_compliance (clause %d): AI returned no output.", rbi_clause_id)
         return _fallback
@@ -570,8 +595,9 @@ Respond ONLY with valid JSON."""
             "risk_score": float(data.get("risk_score", 50)),
             "agreement_reference": data.get("agreement_reference", "Approximate Reference: Not explicitly found"),
             "ai_understanding_agreement": data.get("ai_understanding_agreement", ""),
-            "ai_understanding_rbi": data.get("ai_understanding_rbi", ""),
+            "ai_understanding_rbi": rbi_ai_understanding or data.get("ai_understanding_rbi", ""),
         }
 
     logger.warning("check_compliance (clause %d): JSON parse failed; returning fallback.", rbi_clause_id)
+    _fallback["ai_understanding_rbi"] = rbi_ai_understanding or rbi_clause_text
     return _fallback

@@ -1,6 +1,6 @@
 import logging
 import asyncio
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel
@@ -33,6 +33,14 @@ async def _run_rbi_clause_analysis_async(db_url: str, force: bool = False):
         provider = get_active_provider()
         logger.info("Starting RBI clause analysis (force=%s, provider=%s)", force, provider)
 
+        # If force=True, clear all existing understandings first
+        if force:
+            clauses_to_clear = db.query(RBIClause).all()
+            for clause in clauses_to_clear:
+                clause.ai_understanding = None
+            db.commit()
+            logger.info("Cleared %d existing clause understandings for force re-analysis", len(clauses_to_clear))
+
         is_connected = await check_ai_connection()
         if not is_connected:
             logger.warning("%s not reachable, skipping RBI clause analysis", provider.upper())
@@ -40,7 +48,9 @@ async def _run_rbi_clause_analysis_async(db_url: str, force: bool = False):
 
         if provider == "groq":
             resolved_model = get_ai_model()
-        else:
+        elif provider == "lmstudio":
+            resolved_model = get_ai_model()  # LMStudio uses the configured model directly
+        else:  # ollama
             resolved_model = await resolve_ollama_model(OLLAMA_MODEL)
             if not resolved_model:
                 logger.warning("No Ollama models available, skipping RBI clause analysis")
@@ -53,11 +63,15 @@ async def _run_rbi_clause_analysis_async(db_url: str, force: bool = False):
 
         updated = 0
         for clause in clauses:
+            # Skip only if NOT forcing AND already has understanding
             if not force and clause.ai_understanding:
+                logger.debug("Skipping clause %d; already analyzed", clause.id)
                 continue
+            logger.info("Analyzing clause %d (force=%s)", clause.id, force)
             understanding = await generate_rbi_understanding(
                 clause.clause_text,
                 clause.predefined_meaning,
+                provider=provider,
                 model=resolved_model,
             )
             clause.ai_understanding = understanding
@@ -115,7 +129,7 @@ def list_clauses(db: Session = Depends(get_db)):
 @router.post("/analyze")
 def analyze_clauses(
     background_tasks: BackgroundTasks,
-    force: bool = False,
+    force: bool = Query(False),
 ):
     from db.session import DATABASE_URL
     background_tasks.add_task(run_rbi_clause_analysis, DATABASE_URL, force)
