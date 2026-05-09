@@ -22,6 +22,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 import httpx
 import os
 from typing import Optional, Callable
@@ -64,6 +65,24 @@ GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
 
+_CONNECTION_CACHE_TTL_SECONDS = float(os.getenv("AI_CONNECTION_CACHE_SECONDS", "60"))
+_CONNECTION_CACHE: dict[str, tuple[float, bool]] = {}
+
+
+def _get_cached_connection_result(cache_key: str) -> Optional[bool]:
+    cached = _CONNECTION_CACHE.get(cache_key)
+    if not cached:
+        return None
+    cached_at, cached_result = cached
+    if time.monotonic() - cached_at > _CONNECTION_CACHE_TTL_SECONDS:
+        _CONNECTION_CACHE.pop(cache_key, None)
+        return None
+    return cached_result
+
+
+def _set_cached_connection_result(cache_key: str, result: bool) -> None:
+    _CONNECTION_CACHE[cache_key] = (time.monotonic(), result)
+
 
 # ---------------------------------------------------------------------------
 # Provider helpers  (read runtime_config so the dropdown switch takes effect)
@@ -90,26 +109,45 @@ def get_ai_model() -> str:
 # Connection checks
 # ---------------------------------------------------------------------------
 async def check_ollama_connection() -> bool:
+    cache_key = f"ollama:{get_ollama_base_url()}"
+    cached = _get_cached_connection_result(cache_key)
+    if cached is not None:
+        return cached
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             r = await client.get(f"{get_ollama_base_url()}/api/tags")
-            return r.status_code == 200
+            result = r.status_code == 200
+            _set_cached_connection_result(cache_key, result)
+            return result
     except Exception:
+        _set_cached_connection_result(cache_key, False)
         return False
 
 
 async def check_lmstudio_connection() -> bool:
+    cache_key = f"lmstudio:{get_lmstudio_base_url()}"
+    cached = _get_cached_connection_result(cache_key)
+    if cached is not None:
+        return cached
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             r = await client.get(f"{get_lmstudio_base_url()}/v1/models")
-            return r.status_code == 200
+            result = r.status_code == 200
+            _set_cached_connection_result(cache_key, result)
+            return result
     except Exception:
+        _set_cached_connection_result(cache_key, False)
         return False
 
 
 async def check_groq_connection() -> bool:
+    cache_key = f"groq:{GROQ_BASE_URL}:{bool(GROQ_API_KEY)}"
+    cached = _get_cached_connection_result(cache_key)
+    if cached is not None:
+        return cached
     if not GROQ_API_KEY:
         logger.warning("GROQ_API_KEY is not set.")
+        _set_cached_connection_result(cache_key, False)
         return False
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -117,8 +155,11 @@ async def check_groq_connection() -> bool:
                 f"{GROQ_BASE_URL}/models",
                 headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
             )
-            return r.status_code == 200
+            result = r.status_code == 200
+            _set_cached_connection_result(cache_key, result)
+            return result
     except Exception:
+        _set_cached_connection_result(cache_key, False)
         return False
 
 

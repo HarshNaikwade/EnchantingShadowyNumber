@@ -1,10 +1,11 @@
-version: "3.9"
-
 services:
   backend:
     build:
       context: .
       dockerfile: apps/backend/Dockerfile
+    container_name: backend
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8000:8000"
     volumes:
@@ -14,21 +15,36 @@ services:
     environment:
       - BACKEND_PORT=8000
       - UPLOAD_DIR=/app/uploads
-      - FRONTEND_ORIGINS=http://localhost:5000
+      - FRONTEND_ORIGINS=http://frontend:80,http://localhost:5000
+      - AI_PROVIDER=lmstudio
+      - LMSTUDIO_BASE_URL=http://host.docker.internal:1234
+      - LMSTUDIO_MODEL=google/gemma-4-e4b
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 40s
+    networks:
+      - compliance-network
 
   frontend:
     build:
       context: .
       dockerfile: apps/frontend/Dockerfile
+    container_name: frontend
     ports:
       - "5000:80"
+    environment:
+      - REACT_APP_API_URL=http://backend:8000
     depends_on:
       backend:
         condition: service_healthy
     restart: unless-stopped
+    networks:
+      - compliance-network
+
+networks:
+  compliance-network:
+    driver: bridge
