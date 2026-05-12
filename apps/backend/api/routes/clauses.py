@@ -1,8 +1,9 @@
 import logging
 import asyncio
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, AsyncGenerator
 from pydantic import BaseModel
 
 from db.session import get_db
@@ -16,6 +17,10 @@ from services.ai.analyzer import (
     OLLAMA_MODEL,
 )
 
+from core.analysis_progress_simple import (
+    emit_started, emit_clause_progress, emit_clause_completed, 
+    emit_completed, emit_error, get_event_json, get_next_event, AnalysisEvent
+)
 router = APIRouter(prefix="/api/clauses", tags=["clauses"])
 logger = logging.getLogger(__name__)
 
@@ -41,11 +46,12 @@ async def _run_rbi_clause_analysis_async(db_url: str, force: bool = False):
             db.commit()
             logger.info("Cleared %d existing clause understandings for force re-analysis", len(clauses_to_clear))
 
+
         is_connected = await check_ai_connection()
         if not is_connected:
             logger.warning("%s not reachable, skipping RBI clause analysis", provider.upper())
+            emit_error(f"{provider.upper()} not reachable")
             return
-
         if provider == "groq":
             resolved_model = get_ai_model()
         elif provider == "lmstudio":
@@ -53,21 +59,27 @@ async def _run_rbi_clause_analysis_async(db_url: str, force: bool = False):
         else:  # ollama
             resolved_model = await resolve_ollama_model(OLLAMA_MODEL)
             if not resolved_model:
-                logger.warning("No Ollama models available, skipping RBI clause analysis")
+                emit_error("No Ollama models available")
                 return
 
         clauses = db.query(RBIClause).all()
         if not clauses:
             logger.info("No RBI clauses found for analysis")
+            emit_error("No RBI clauses found")
             return
+        total_clauses = len(clauses)
+        emit_started(total_clauses)
 
         updated = 0
+        clause_number = 0
         for clause in clauses:
+            clause_number += 1
             # Skip only if NOT forcing AND already has understanding
             if not force and clause.ai_understanding:
                 logger.debug("Skipping clause %d; already analyzed", clause.id)
                 continue
             logger.info("Analyzing clause %d (force=%s)", clause.id, force)
+            emit_clause_progress(clause.id, clause_number, total_clauses, f"Analyzing clause {clause_number}...")
             understanding = await generate_rbi_understanding(
                 clause.clause_text,
                 clause.predefined_meaning,
@@ -77,14 +89,17 @@ async def _run_rbi_clause_analysis_async(db_url: str, force: bool = False):
             clause.ai_understanding = understanding
             # Persist each clause result immediately so UI can show progress as soon as it arrives.
             db.commit()
+            emit_clause_completed(clause.id, clause_number, total_clauses, understanding)
             updated += 1
 
+        emit_completed()
         if updated:
             logger.info("RBI clause analysis updated %s clauses.", updated)
         else:
             logger.info("RBI clause analysis skipped; nothing to update")
-    except Exception:
+    except Exception as e:
         logger.exception("RBI clause analysis failed")
+        await emit_error(f"Analysis failed: {str(e)}")
     finally:
         db.close()
 
@@ -136,6 +151,35 @@ def analyze_clauses(
     background_tasks.add_task(run_rbi_clause_analysis, DATABASE_URL, force)
     logger.info("Queued RBI clause analysis (force=%s)", force)
     return {"message": "RBI clause analysis queued", "force": force}
+
+
+
+@router.get("/progress")
+async def analyze_progress():
+    """SSE endpoint to stream analysis progress updates."""
+    async def event_generator() -> AsyncGenerator[str, None]:
+        while True:
+            try:
+                # Get next event with timeout (blocking, but runs in thread pool)
+                event = await asyncio.get_event_loop().run_in_executor(
+                    None, 
+                    lambda: get_next_event(timeout=55)
+                )
+                if event is None:
+                    # Timeout, send keepalive
+                    yield ": keepalive\n\n"
+                    continue
+                
+                event_json = get_event_json(event)
+                yield f"data: {event_json}\n\n"
+                if event.type == "completed" or event.type == "error":
+                    break
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.exception("SSE error: %s", e)
+                break
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @router.post("/", response_model=RBIClauseResponse, status_code=201)

@@ -44,6 +44,15 @@ const emptyForm = (): RBIClausePayload => ({
   category: "",
 });
 
+interface AnalysisEvent {
+  type: string;
+  clause_id?: number;
+  clause_number?: number;
+  total_clauses?: number;
+  message?: string;
+  understanding?: string;
+}
+
 export default function RBIClausesSettings() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -52,12 +61,19 @@ export default function RBIClausesSettings() {
   const [editing, setEditing] = useState<RBIClause | null>(null);
   const [form, setForm] = useState<RBIClausePayload>(emptyForm());
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
-  const [polling, setPolling] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isForceAnalyzing, setIsForceAnalyzing] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState<
+    Map<number, AnalysisEvent>
+  >(new Map());
+  const [analysisResults, setAnalysisResults] = useState<Map<number, string>>(
+    new Map(),
+  );
 
   const { data: clauses = [], isLoading } = useQuery({
     queryKey: ["clauses"],
     queryFn: apiClient.listClauses,
-    refetchInterval: polling ? 5000 : false,
+    refetchInterval: false, // Disable polling, use SSE instead
   });
 
   const createMutation = useMutation({
@@ -98,26 +114,90 @@ export default function RBIClausesSettings() {
 
   const analyzeMutation = useMutation({
     mutationFn: (force: boolean) => apiClient.analyzeClauses(force),
+    onMutate: (force) => {
+      setIsAnalyzing(true);
+      setIsForceAnalyzing(force);
+      setAnalysisProgress(new Map());
+      setAnalysisResults(new Map());
+    },
     onSuccess: (data) => {
       logEvent("RBI clause analysis queued", { force: data.force });
-      setPolling(true);
     },
-    onError: (error) => logError("Failed to queue RBI clause analysis", error),
+    onError: (error) => {
+      setIsAnalyzing(false);
+      setIsForceAnalyzing(false);
+      logError("Failed to queue RBI clause analysis", error);
+    },
   });
 
-  const isAnalysisComplete =
-    clauses.length > 0 && clauses.every((c) => Boolean(c.ai_understanding));
-
-  const firstPendingClauseId = clauses.find(
-    (clause) => !clause.ai_understanding,
-  )?.id;
-
+  // SSE effect to listen for analysis progress
   useEffect(() => {
-    if (polling && isAnalysisComplete) {
-      setPolling(false);
-      logEvent("RBI clause analysis completed");
-    }
-  }, [polling, isAnalysisComplete]);
+    if (!isAnalyzing) return;
+
+    const eventSource = new EventSource("/api/clauses/progress");
+
+    const handleMessage = (event: Event) => {
+      try {
+        const messageEvent = event as MessageEvent;
+        const data = JSON.parse(messageEvent.data) as AnalysisEvent;
+
+        logEvent("Analysis progress", { type: data.type });
+
+        if (data.type === "started") {
+          setAnalysisProgress(new Map());
+        } else if (
+          data.type === "clause_progress" ||
+          data.type === "clause_completed"
+        ) {
+          const clauseId = data.clause_id;
+          setAnalysisProgress((prev) => {
+            const newMap = new Map(prev);
+            if (clauseId != null) {
+              newMap.set(clauseId, data);
+            }
+            return newMap;
+          });
+          if (data.type === "clause_completed" && clauseId != null) {
+            setAnalysisResults((prev) => {
+              const newMap = new Map(prev);
+              if (data.understanding) {
+                newMap.set(clauseId, data.understanding);
+              }
+              return newMap;
+            });
+          }
+        } else if (data.type === "completed") {
+          logEvent("RBI clause analysis completed");
+          setIsAnalyzing(false);
+          setIsForceAnalyzing(false);
+          queryClient.invalidateQueries({ queryKey: ["clauses"] });
+          eventSource.close();
+        } else if (data.type === "error") {
+          logError(
+            "Analysis error",
+            new Error(data.message || "Unknown error"),
+          );
+          setIsAnalyzing(false);
+          setIsForceAnalyzing(false);
+          eventSource.close();
+        }
+      } catch (error) {
+        logError("Failed to parse analysis event", error);
+      }
+    };
+
+    eventSource.addEventListener("message", handleMessage);
+    eventSource.onerror = () => {
+      logError("SSE connection error", new Error("EventSource error"));
+      setIsAnalyzing(false);
+      setIsForceAnalyzing(false);
+      eventSource.close();
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, [isAnalyzing, queryClient]);
 
   const openCreate = () => {
     setEditing(null);
@@ -201,9 +281,9 @@ export default function RBIClausesSettings() {
             <Button
               variant="outline"
               onClick={() => analyzeMutation.mutate(false)}
-              disabled={analyzeMutation.isPending}
+              disabled={analyzeMutation.isPending || isAnalyzing}
             >
-              {analyzeMutation.isPending && (
+              {(analyzeMutation.isPending || isAnalyzing) && (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               )}
               Analyze Clauses
@@ -211,9 +291,9 @@ export default function RBIClausesSettings() {
             <Button
               variant="outline"
               onClick={() => analyzeMutation.mutate(true)}
-              disabled={analyzeMutation.isPending}
+              disabled={analyzeMutation.isPending || isAnalyzing}
             >
-              {analyzeMutation.isPending && (
+              {(analyzeMutation.isPending || isAnalyzing) && (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               )}
               Force Re-Analyze
@@ -246,23 +326,34 @@ export default function RBIClausesSettings() {
           </div>
         ) : (
           <div className="space-y-3">
-            {clauses.map((clause) => (
-              <Card key={clause.id} className="group">
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        {clause.category && (
-                          <Badge
-                            variant="secondary"
-                            className="text-xs shrink-0"
-                          >
-                            {clause.category}
-                          </Badge>
-                        )}
-                        {polling &&
-                          !clause.ai_understanding &&
-                          clause.id === firstPendingClauseId && (
+            {clauses.map((clause) => {
+              const analysisEvent = analysisProgress.get(clause.id);
+              const liveUnderstanding = analysisResults.get(clause.id);
+              const visibleUnderstanding =
+                liveUnderstanding ??
+                (isForceAnalyzing ? null : clause.ai_understanding);
+              const isCompletedBySse =
+                analysisEvent?.type === "clause_completed";
+              const isDone = Boolean(visibleUnderstanding) || isCompletedBySse;
+              const isRunning =
+                isAnalyzing && analysisEvent && !isCompletedBySse;
+              const isQueued = isAnalyzing && !analysisEvent && !isDone;
+
+              return (
+                <Card key={clause.id} className="group">
+                  <CardHeader className="pb-2">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          {clause.category && (
+                            <Badge
+                              variant="secondary"
+                              className="text-xs shrink-0"
+                            >
+                              {clause.category}
+                            </Badge>
+                          )}
+                          {isRunning && (
                             <Badge
                               variant="review"
                               className="text-xs shrink-0 flex items-center gap-1"
@@ -271,9 +362,16 @@ export default function RBIClausesSettings() {
                               Analysing
                             </Badge>
                           )}
-                        {polling &&
-                          !clause.ai_understanding &&
-                          clause.id !== firstPendingClauseId && (
+                          {isDone && (
+                            <Badge
+                              variant="success"
+                              className="text-xs shrink-0 flex items-center gap-1"
+                            >
+                              <Check className="h-3 w-3" />
+                              Analysed
+                            </Badge>
+                          )}
+                          {isQueued && (
                             <Badge
                               variant="secondary"
                               className="text-xs shrink-0 flex items-center gap-1"
@@ -282,84 +380,82 @@ export default function RBIClausesSettings() {
                               In Queue
                             </Badge>
                           )}
-                        <span className="text-xs text-muted-foreground">
-                          #{clause.id}
-                        </span>
+                        </div>
+                        <CardTitle className="text-sm font-medium leading-snug text-gray-900">
+                          {clause.clause_text}
+                        </CardTitle>
                       </div>
-                      <CardTitle className="text-sm font-medium leading-snug text-gray-900">
-                        {clause.clause_text}
-                      </CardTitle>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => openEdit(clause)}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      {deleteConfirm === clause.id ? (
-                        <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => openEdit(clause)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        {deleteConfirm === clause.id ? (
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-destructive hover:text-destructive"
+                              onClick={() => deleteMutation.mutate(clause.id)}
+                              disabled={deleteMutation.isPending}
+                            >
+                              {deleteMutation.isPending ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Check className="h-3.5 w-3.5" />
+                              )}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => setDeleteConfirm(null)}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        ) : (
                           <Button
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-destructive hover:text-destructive"
-                            onClick={() => deleteMutation.mutate(clause.id)}
-                            disabled={deleteMutation.isPending}
+                            onClick={() => setDeleteConfirm(clause.id)}
                           >
-                            {deleteMutation.isPending ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Check className="h-3.5 w-3.5" />
-                            )}
+                            <Trash2 className="h-3.5 w-3.5" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() => setDeleteConfirm(null)}
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-destructive hover:text-destructive"
-                          onClick={() => setDeleteConfirm(clause.id)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </CardHeader>
-                {(clause.predefined_meaning || clause.ai_understanding) && (
-                  <CardContent className="pt-0 pb-3 space-y-2">
-                    {clause.predefined_meaning && (
-                      <p className="text-xs text-muted-foreground leading-relaxed border-t pt-2 pb-2">
-                        <span className="font-medium text-gray-600">
-                          Meaning:{" "}
-                        </span>
-                        {clause.predefined_meaning}
-                      </p>
-                    )}
-                    {clause.ai_understanding && (
-                      <div className="border-t pt-2">
-                        <p className="text-xs font-medium text-gray-600 mb-1">
-                          AI Understanding:
-                        </p>
-                        <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">
-                          {clause.ai_understanding}
-                        </p>
+                        )}
                       </div>
-                    )}
-                  </CardContent>
-                )}
-              </Card>
-            ))}
+                    </div>
+                  </CardHeader>
+                  {(clause.predefined_meaning || visibleUnderstanding) && (
+                    <CardContent className="pt-0 pb-3 space-y-2">
+                      {clause.predefined_meaning && (
+                        <p className="text-xs text-muted-foreground leading-relaxed border-t pt-2 pb-2">
+                          <span className="font-medium text-gray-600">
+                            Meaning:{" "}
+                          </span>
+                          {clause.predefined_meaning}
+                        </p>
+                      )}
+                      {visibleUnderstanding && (
+                        <div className="border-t pt-2">
+                          <p className="text-xs font-medium text-gray-600 mb-1">
+                            AI Understanding:
+                          </p>
+                          <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">
+                            {visibleUnderstanding}
+                          </p>
+                        </div>
+                      )}
+                    </CardContent>
+                  )}
+                </Card>
+              );
+            })}
           </div>
         )}
       </main>
