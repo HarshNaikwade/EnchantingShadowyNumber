@@ -407,66 +407,87 @@ async def groq_generate(
     logger.debug("Groq request → model=%s prompt_len=%d", model, len(prompt))
 
     max_retries = 4
-    for attempt in range(max_retries + 1):
-        # No timeout for generation: some hardware/provider responses can be very slow.
-        async with httpx.AsyncClient(timeout=None) as client:
-            if not on_chunk:
-                response = await client.post(
-                    f"{GROQ_BASE_URL}/chat/completions",
-                    headers=headers,
-                    json=payload,
-                )
-            else:
-                output_parts: list[str] = []
-                async with client.stream(
-                    "POST",
-                    f"{GROQ_BASE_URL}/chat/completions",
-                    headers=headers,
-                    json=payload,
-                ) as response:
-                    if response.status_code == 429:
+    try:
+        for attempt in range(max_retries + 1):
+            # No timeout for generation: some hardware/provider responses can be very slow.
+            async with httpx.AsyncClient(timeout=None) as client:
+                if not on_chunk:
+                    response = await client.post(
+                        f"{GROQ_BASE_URL}/chat/completions",
+                        headers=headers,
+                        json=payload,
+                    )
+                else:
+                    output_parts: list[str] = []
+                    async with client.stream(
+                        "POST",
+                        f"{GROQ_BASE_URL}/chat/completions",
+                        headers=headers,
+                        json=payload,
+                    ) as response:
+                        # Handle rate-limiting for streaming responses similarly to non-streaming
+                        if response.status_code == 429:
+                            if attempt < max_retries:
+                                wait = int(response.headers.get("retry-after", "")) if response.headers.get("retry-after", "").isdigit() else min(10 * (2 ** attempt), 60)
+                                logger.warning(
+                                    "Groq rate limited (429 streaming). Waiting %ds before retry %d/%d.",
+                                    wait, attempt + 1, max_retries,
+                                )
+                                await asyncio.sleep(wait)
+                                continue
+                            # no retries left; raise to surface the error
+                            response.raise_for_status()
                         response.raise_for_status()
-                    response.raise_for_status()
-                    async for line in response.aiter_lines():
-                        if not line.strip():
-                            continue
-                        if line.startswith("data: "):
-                            line = line.removeprefix("data: ").strip()
-                        if line == "[DONE]":
-                            break
-                        try:
-                            data = json.loads(line)
-                        except json.JSONDecodeError:
-                            logger.debug("Groq stream: skipping non-JSON line: %s", line[:100])
-                            continue
-                        delta = data.get("choices", [{}])[0].get("delta", {})
-                        chunk = delta.get("content") or ""
-                        if chunk:
-                            on_chunk(chunk)
-                            output_parts.append(chunk)
-                        if data.get("choices", [{}])[0].get("finish_reason"):
-                            break
+                        async for line in response.aiter_lines():
+                            if not line.strip():
+                                continue
+                            if line.startswith("data: "):
+                                line = line.removeprefix("data: ").strip()
+                            if line == "[DONE]":
+                                break
+                            try:
+                                data = json.loads(line)
+                            except json.JSONDecodeError:
+                                logger.debug("Groq stream: skipping non-JSON line: %s", line[:100])
+                                continue
+                            delta = data.get("choices", [{}])[0].get("delta", {})
+                            chunk = delta.get("content") or ""
+                            if chunk:
+                                on_chunk(chunk)
+                                output_parts.append(chunk)
+                            if data.get("choices", [{}])[0].get("finish_reason"):
+                                break
 
-                raw = "".join(output_parts)
-                logger.debug("Groq stream complete (%d chars): %s", len(raw), raw[:300])
-                if not raw:
-                    logger.warning("Groq streaming produced no output for model=%s", model)
-                return raw
+                    raw = "".join(output_parts)
+                    logger.debug("Groq stream complete (%d chars): %s", len(raw), raw[:300])
+                    if not raw:
+                        logger.warning("Groq streaming produced no output for model=%s", model)
+                    return raw
 
-        if response.status_code == 429:
-            if attempt < max_retries:
-                wait = int(response.headers.get("retry-after", "")) if response.headers.get("retry-after", "").isdigit() else min(10 * (2 ** attempt), 60)
-                logger.warning(
-                    "Groq rate limited (429). Waiting %ds before retry %d/%d.",
-                    wait, attempt + 1, max_retries,
-                )
-                await asyncio.sleep(wait)
-                continue
+            # Non-streaming response handling
+            if response.status_code == 429:
+                if attempt < max_retries:
+                    wait = int(response.headers.get("retry-after", "")) if response.headers.get("retry-after", "").isdigit() else min(10 * (2 ** attempt), 60)
+                    logger.warning(
+                        "Groq rate limited (429). Waiting %ds before retry %d/%d.",
+                        wait, attempt + 1, max_retries,
+                    )
+                    await asyncio.sleep(wait)
+                    continue
+                response.raise_for_status()
+
             response.raise_for_status()
-
-        response.raise_for_status()
-        data = response.json()
-        break
+            data = response.json()
+            break
+    except httpx.HTTPStatusError as e:
+        logger.error("Groq request failed with HTTP error: %s", e)
+        return ""
+    except httpx.RequestError as e:
+        logger.error("Groq request failed with network error: %s", e)
+        return ""
+    except Exception as e:
+        logger.exception("Unexpected error while calling Groq: %s", e)
+        return ""
 
     try:
         raw = data["choices"][0]["message"]["content"]

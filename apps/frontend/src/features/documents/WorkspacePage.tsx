@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDropzone } from "react-dropzone";
@@ -64,6 +64,10 @@ function DocumentCard({
   const [editEffective, setEditEffective] = useState(doc.effective_date);
   const [editCreation, setEditCreation] = useState(doc.creation_date);
   const [editingDates, setEditingDates] = useState(false);
+  const [liveStatus, setLiveStatus] = useState(doc.processing_status);
+  const [liveProgress, setLiveProgress] = useState<DocumentProgress | null>(
+    null,
+  );
 
   const formatProgressStep = (step: string) => {
     if (step === "thinking") return "Thinking";
@@ -71,29 +75,51 @@ function DocumentCard({
     return step.replace(/_/g, " ");
   };
 
-  const { data: status, refetch: refetchStatus } = useQuery({
-    queryKey: ["docStatus", doc.id],
-    queryFn: () => apiClient.getDocumentStatus(doc.id),
-    refetchInterval: (query) => {
-      const s =
-        (query.state.data as { status: string } | undefined)?.status ??
-        doc.processing_status;
-      return DONE_STATUSES.has(s) ? false : 3000;
-    },
-  });
-
-  const currentStatus = status?.status ?? doc.processing_status;
+  const currentStatus = liveStatus;
   const isDone = DONE_STATUSES.has(currentStatus);
 
-  const { data: progress } = useQuery<DocumentProgress>({
-    queryKey: ["docProgress", doc.id],
-    queryFn: () => apiClient.getDocumentProgress(doc.id),
-    refetchInterval:
-      !isDone && (currentStatus === "processing" || currentStatus === "queued")
-        ? 3000
-        : false,
-    retry: false,
-  });
+  useEffect(() => {
+    if (DONE_STATUSES.has(currentStatus)) {
+      return;
+    }
+
+    const eventSource = new EventSource(
+      `/api/document/${doc.id}/progress/stream`,
+    );
+
+    const handleMessage = (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data) as DocumentProgress & {
+          status?: string;
+        };
+
+        setLiveProgress(data);
+        if (data.status) {
+          setLiveStatus(data.status);
+        }
+
+        if (data.done) {
+          const finalStatus = data.status || doc.processing_status;
+          setLiveStatus(finalStatus);
+          setLiveProgress(data);
+          queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
+          queryClient.invalidateQueries({ queryKey: ["results", sessionId, doc.id] });
+          eventSource.close();
+        }
+      } catch (error) {
+        logError("Failed to parse document progress event", error);
+      }
+    };
+
+    eventSource.addEventListener("message", handleMessage);
+    eventSource.onerror = () => {
+      eventSource.close();
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, [currentStatus, doc.id, doc.processing_status, queryClient, sessionId]);
 
   const deleteMutation = useMutation({
     mutationFn: () => apiClient.deleteDocument(doc.id),
@@ -108,11 +134,9 @@ function DocumentCard({
     mutationFn: () => apiClient.rerunDocument(doc.id),
     onSuccess: () => {
       logEvent("AI analysis re-queued", { documentId: doc.id });
-      queryClient.invalidateQueries({ queryKey: ["docStatus", doc.id] });
-      queryClient.invalidateQueries({ queryKey: ["docProgress", doc.id] });
-      queryClient.invalidateQueries({
-        queryKey: ["results", sessionId, doc.id],
-      });
+      setLiveStatus("queued");
+      setLiveProgress(null);
+      queryClient.removeQueries({ queryKey: ["results", sessionId, doc.id] });
       queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
     },
     onError: (error) => logError("Failed to re-run analysis", error),
@@ -244,7 +268,7 @@ function DocumentCard({
                     logEvent("Status refresh requested", {
                       documentId: doc.id,
                     });
-                    refetchStatus();
+                    queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
                   }}
                 >
                   <RefreshCw className="h-3 w-3" />
@@ -252,35 +276,35 @@ function DocumentCard({
               </div>
             )}
 
-            {progress &&
+            {liveProgress &&
               (currentStatus === "processing" ||
                 currentStatus === "queued") && (
                 <div className="ml-auto text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded px-3 py-2 w-full">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-semibold">AI step:</span>
                     <span className="capitalize">
-                      {formatProgressStep(progress.step)}
+                      {formatProgressStep(liveProgress.step)}
                     </span>
-                    {progress.stalled && (
+                    {liveProgress.stalled && (
                       <span className="text-amber-700">
                         No response received for{" "}
-                        {progress.last_chunk_age ?? "?"}s
+                        {liveProgress.last_chunk_age ?? "?"}s
                       </span>
                     )}
                   </div>
-                  {progress.message && (
+                  {liveProgress.message && (
                     <div className="text-xs text-muted-foreground mt-1">
-                      {progress.message}
+                      {liveProgress.message}
                     </div>
                   )}
-                  {progress.response_preview && (
+                  {liveProgress.response_preview && (
                     <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-[11px] bg-white border border-slate-200 rounded p-2">
-                      {progress.response_preview}
+                      {liveProgress.response_preview}
                     </pre>
                   )}
-                  {progress.error && (
+                  {liveProgress.error && (
                     <div className="mt-2 text-xs text-destructive">
-                      {progress.error}
+                      {liveProgress.error}
                     </div>
                   )}
                 </div>
@@ -361,15 +385,6 @@ export default function WorkspacePage() {
   const { data: session, isLoading } = useQuery({
     queryKey: ["session", sessionId],
     queryFn: () => apiClient.getSession(sessionId),
-    refetchInterval: (query) => {
-      const data = query.state.data as typeof session | undefined;
-      if (!data) return 5000;
-      const sessionDone = DONE_STATUSES.has(data.status);
-      const allDocsDone = data.documents.every((d) =>
-        DONE_STATUSES.has(d.processing_status),
-      );
-      return sessionDone && allDocsDone ? false : 5000;
-    },
   });
 
   const { data: rbiClauses = [] } = useQuery({
