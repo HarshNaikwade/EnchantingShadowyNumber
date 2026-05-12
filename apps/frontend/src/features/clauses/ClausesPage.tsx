@@ -53,7 +53,6 @@ export default function RBIClausesSettings() {
   const [form, setForm] = useState<RBIClausePayload>(emptyForm());
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [polling, setPolling] = useState(false);
-  const [pollTimedOut, setPollTimedOut] = useState(false);
 
   const { data: clauses = [], isLoading } = useQuery({
     queryKey: ["clauses"],
@@ -102,7 +101,6 @@ export default function RBIClausesSettings() {
     onSuccess: (data) => {
       logEvent("RBI clause analysis queued", { force: data.force });
       setPolling(true);
-      setPollTimedOut(false);
     },
     onError: (error) => logError("Failed to queue RBI clause analysis", error),
   });
@@ -110,22 +108,16 @@ export default function RBIClausesSettings() {
   const isAnalysisComplete =
     clauses.length > 0 && clauses.every((c) => Boolean(c.ai_understanding));
 
+  const firstPendingClauseId = clauses.find(
+    (clause) => !clause.ai_understanding,
+  )?.id;
+
   useEffect(() => {
     if (polling && isAnalysisComplete) {
       setPolling(false);
       logEvent("RBI clause analysis completed");
     }
   }, [polling, isAnalysisComplete]);
-
-  useEffect(() => {
-    if (!polling) return;
-    const timeout = window.setTimeout(() => {
-      setPolling(false);
-      setPollTimedOut(true);
-      logEvent("RBI clause analysis polling timed out");
-    }, 180000);
-    return () => window.clearTimeout(timeout);
-  }, [polling]);
 
   const openCreate = () => {
     setEditing(null);
@@ -204,12 +196,6 @@ export default function RBIClausesSettings() {
               Define the global set of RBI clauses used across all compliance
               analyses.
             </p>
-            {pollTimedOut && !isAnalysisComplete && (
-              <p className="text-xs text-amber-700 mt-2">
-                Analysis is taking longer than expected. Check Debug Logs for
-                backend errors or retry analysis.
-              </p>
-            )}
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -274,15 +260,28 @@ export default function RBIClausesSettings() {
                             {clause.category}
                           </Badge>
                         )}
-                        {polling && !clause.ai_understanding && (
-                          <Badge
-                            variant="review"
-                            className="text-xs shrink-0 flex items-center gap-1"
-                          >
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                            Analyzing
-                          </Badge>
-                        )}
+                        {polling &&
+                          !clause.ai_understanding &&
+                          clause.id === firstPendingClauseId && (
+                            <Badge
+                              variant="review"
+                              className="text-xs shrink-0 flex items-center gap-1"
+                            >
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              Analysing
+                            </Badge>
+                          )}
+                        {polling &&
+                          !clause.ai_understanding &&
+                          clause.id !== firstPendingClauseId && (
+                            <Badge
+                              variant="secondary"
+                              className="text-xs shrink-0 flex items-center gap-1"
+                            >
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              In Queue
+                            </Badge>
+                          )}
                         <span className="text-xs text-muted-foreground">
                           #{clause.id}
                         </span>

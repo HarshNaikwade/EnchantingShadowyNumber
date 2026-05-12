@@ -75,10 +75,11 @@ async def _run_rbi_clause_analysis_async(db_url: str, force: bool = False):
                 model=resolved_model,
             )
             clause.ai_understanding = understanding
+            # Persist each clause result immediately so UI can show progress as soon as it arrives.
+            db.commit()
             updated += 1
 
         if updated:
-            db.commit()
             logger.info("RBI clause analysis updated %s clauses.", updated)
         else:
             logger.info("RBI clause analysis skipped; nothing to update")

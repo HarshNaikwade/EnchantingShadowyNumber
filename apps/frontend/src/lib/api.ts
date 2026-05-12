@@ -100,7 +100,7 @@ export const apiClient = {
   health: (): Promise<HealthStatus> => api.get("/health").then((r) => r.data),
 
   listClauses: (): Promise<RBIClause[]> =>
-    api.get("/clauses/").then((r) => r.data),
+    api.get("/clauses/", { timeout: 0 }).then((r) => r.data),
 
   createClause: (payload: RBIClausePayload): Promise<RBIClause> =>
     api.post("/clauses/", payload).then((r) => r.data),
@@ -117,7 +117,9 @@ export const apiClient = {
   analyzeClauses: (
     force = false,
   ): Promise<{ message: string; force: boolean }> =>
-    api.post(`/clauses/analyze?force=${force}`).then((r) => r.data),
+    api
+      .post(`/clauses/analyze?force=${force}`, null, { timeout: 0 })
+      .then((r) => r.data),
 
   listSessions: (): Promise<AnalysisSession[]> =>
     api.get("/analysis/").then((r) => r.data),

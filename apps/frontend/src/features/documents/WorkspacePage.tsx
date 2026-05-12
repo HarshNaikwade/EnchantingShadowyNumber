@@ -65,11 +65,19 @@ function DocumentCard({
   const [editCreation, setEditCreation] = useState(doc.creation_date);
   const [editingDates, setEditingDates] = useState(false);
 
+  const formatProgressStep = (step: string) => {
+    if (step === "thinking") return "Thinking";
+    if (step === "generating_response") return "Generating response";
+    return step.replace(/_/g, " ");
+  };
+
   const { data: status, refetch: refetchStatus } = useQuery({
     queryKey: ["docStatus", doc.id],
     queryFn: () => apiClient.getDocumentStatus(doc.id),
     refetchInterval: (query) => {
-      const s = (query.state.data as { status: string } | undefined)?.status ?? doc.processing_status;
+      const s =
+        (query.state.data as { status: string } | undefined)?.status ??
+        doc.processing_status;
       return DONE_STATUSES.has(s) ? false : 3000;
     },
   });
@@ -80,7 +88,10 @@ function DocumentCard({
   const { data: progress } = useQuery<DocumentProgress>({
     queryKey: ["docProgress", doc.id],
     queryFn: () => apiClient.getDocumentProgress(doc.id),
-    refetchInterval: !isDone && (currentStatus === "processing" || currentStatus === "queued") ? 3000 : false,
+    refetchInterval:
+      !isDone && (currentStatus === "processing" || currentStatus === "queued")
+        ? 3000
+        : false,
     retry: false,
   });
 
@@ -99,7 +110,9 @@ function DocumentCard({
       logEvent("AI analysis re-queued", { documentId: doc.id });
       queryClient.invalidateQueries({ queryKey: ["docStatus", doc.id] });
       queryClient.invalidateQueries({ queryKey: ["docProgress", doc.id] });
-      queryClient.invalidateQueries({ queryKey: ["results", sessionId, doc.id] });
+      queryClient.invalidateQueries({
+        queryKey: ["results", sessionId, doc.id],
+      });
       queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
     },
     onError: (error) => logError("Failed to re-run analysis", error),
@@ -246,7 +259,7 @@ function DocumentCard({
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-semibold">AI step:</span>
                     <span className="capitalize">
-                      {progress.step.replace(/_/g, " ")}
+                      {formatProgressStep(progress.step)}
                     </span>
                     {progress.stalled && (
                       <span className="text-amber-700">
@@ -353,7 +366,7 @@ export default function WorkspacePage() {
       if (!data) return 5000;
       const sessionDone = DONE_STATUSES.has(data.status);
       const allDocsDone = data.documents.every((d) =>
-        DONE_STATUSES.has(d.processing_status)
+        DONE_STATUSES.has(d.processing_status),
       );
       return sessionDone && allDocsDone ? false : 5000;
     },

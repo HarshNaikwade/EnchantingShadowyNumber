@@ -248,8 +248,8 @@ async def ollama_generate(
     logger.debug("Ollama request → model=%s stream=%s prompt_len=%d", model, use_stream, len(prompt))
 
     base_url = get_ollama_base_url()
-    # Increased timeout to 5 minutes (300s) to allow slow models to respond
-    async with httpx.AsyncClient(timeout=300.0) as client:
+    # No timeout for generation: some hardware/provider responses can be very slow.
+    async with httpx.AsyncClient(timeout=None) as client:
         if not use_stream:
             # ── Non-streaming (most reliable) ──────────────────────────────
             response = await client.post(f"{base_url}/api/generate", json=payload)
@@ -307,25 +307,57 @@ async def lmstudio_generate(
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.1,
         "max_tokens": 2048,
-        "stream": False,
+        "stream": bool(on_chunk),
     }
 
     logger.debug("LMStudio request → model=%s prompt_len=%d", model, len(prompt))
 
     base_url = get_lmstudio_base_url()
-    # Increased timeout to 5 minutes (300s) to allow slow models to respond
-    async with httpx.AsyncClient(timeout=300.0) as client:
+    # No timeout for generation: some hardware/provider responses can be very slow.
+    async with httpx.AsyncClient(timeout=None) as client:
         try:
-            response = await client.post(
-                f"{base_url}/v1/chat/completions",
-                headers=headers,
-                json=payload,
-            )
-            response.raise_for_status()
-            data = response.json()
-        except httpx.TimeoutException:
-            logger.error("LMStudio request timed out after 300 seconds. Model may be too slow or overloaded.")
-            return ""
+            if not on_chunk:
+                response = await client.post(
+                    f"{base_url}/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                )
+                response.raise_for_status()
+                data = response.json()
+            else:
+                output_parts: list[str] = []
+                async with client.stream(
+                    "POST",
+                    f"{base_url}/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                ) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if not line.strip():
+                            continue
+                        if line.startswith("data: "):
+                            line = line.removeprefix("data: ").strip()
+                        if line == "[DONE]":
+                            break
+                        try:
+                            data = json.loads(line)
+                        except json.JSONDecodeError:
+                            logger.debug("LMStudio stream: skipping non-JSON line: %s", line[:100])
+                            continue
+                        delta = data.get("choices", [{}])[0].get("delta", {})
+                        chunk = delta.get("content") or ""
+                        if chunk:
+                            on_chunk(chunk)
+                            output_parts.append(chunk)
+                        if data.get("choices", [{}])[0].get("finish_reason"):
+                            break
+
+                raw = "".join(output_parts)
+                logger.debug("LMStudio stream complete (%d chars): %s", len(raw), raw[:300])
+                if not raw:
+                    logger.warning("LMStudio streaming produced no output for model=%s", model)
+                return raw
         except httpx.RequestError as e:
             logger.error("LMStudio request failed: %s", e)
             return ""
@@ -369,19 +401,57 @@ async def groq_generate(
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.1,
         "max_tokens": 2048,
-        "stream": False,
+        "stream": bool(on_chunk),
     }
 
     logger.debug("Groq request → model=%s prompt_len=%d", model, len(prompt))
 
     max_retries = 4
     for attempt in range(max_retries + 1):
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                f"{GROQ_BASE_URL}/chat/completions",
-                headers=headers,
-                json=payload,
-            )
+        # No timeout for generation: some hardware/provider responses can be very slow.
+        async with httpx.AsyncClient(timeout=None) as client:
+            if not on_chunk:
+                response = await client.post(
+                    f"{GROQ_BASE_URL}/chat/completions",
+                    headers=headers,
+                    json=payload,
+                )
+            else:
+                output_parts: list[str] = []
+                async with client.stream(
+                    "POST",
+                    f"{GROQ_BASE_URL}/chat/completions",
+                    headers=headers,
+                    json=payload,
+                ) as response:
+                    if response.status_code == 429:
+                        response.raise_for_status()
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if not line.strip():
+                            continue
+                        if line.startswith("data: "):
+                            line = line.removeprefix("data: ").strip()
+                        if line == "[DONE]":
+                            break
+                        try:
+                            data = json.loads(line)
+                        except json.JSONDecodeError:
+                            logger.debug("Groq stream: skipping non-JSON line: %s", line[:100])
+                            continue
+                        delta = data.get("choices", [{}])[0].get("delta", {})
+                        chunk = delta.get("content") or ""
+                        if chunk:
+                            on_chunk(chunk)
+                            output_parts.append(chunk)
+                        if data.get("choices", [{}])[0].get("finish_reason"):
+                            break
+
+                raw = "".join(output_parts)
+                logger.debug("Groq stream complete (%d chars): %s", len(raw), raw[:300])
+                if not raw:
+                    logger.warning("Groq streaming produced no output for model=%s", model)
+                return raw
 
         if response.status_code == 429:
             if attempt < max_retries:
@@ -530,6 +600,7 @@ async def generate_rbi_understanding(
     on_chunk: Optional[Callable[[str], None]] = None,
 ) -> str:
     import time
+
     predefined = predefined_meaning or "No predefined meaning was provided."
     prompt = f"""You are an RBI (Reserve Bank of India) compliance expert.
 
@@ -540,8 +611,13 @@ Predefined Meaning: {predefined}
 
 Respond with a JSON object:
 {{
-  "ai_understanding": "A comprehensive explanation of what this RBI clause requires, its regulatory intent, and key compliance points that agreements must address."
+  "ai_understanding": "A concise explanation of what this RBI clause requires, its regulatory intent, and key compliance points that agreements must address."
 }}
+
+Strict requirement: "ai_understanding" MUST be 150 words or fewer.
+Do not exceed 150 words under any circumstances.
+Prefer 90-130 words.
+If the explanation would be longer, rewrite it more concisely instead of adding extra detail.
 
 Respond ONLY with valid JSON."""
 
@@ -559,11 +635,11 @@ Respond ONLY with valid JSON."""
     if data and isinstance(data, dict):
         understanding = data.get("ai_understanding", "")
         if understanding:
-            return understanding
+            return understanding.strip()
         logger.warning("generate_rbi_understanding: 'ai_understanding' key missing or empty in parsed JSON.")
 
     logger.warning("generate_rbi_understanding: falling back to predefined meaning.")
-    return predefined
+    return predefined.strip()
 
 
 async def check_compliance(

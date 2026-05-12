@@ -93,16 +93,30 @@ async def _run_ai_analysis_async(document_id: int, db_url: str):
                 set_error(document_id, "No Ollama models available")
                 return
 
-        progress_update(document_id, "rbi_understanding", "Analyzing RBI clauses")
+        progress_update(document_id, "analyzing", "Analyzing RBI clauses")
         for rbi_clause in rbi_clauses:
             if not rbi_clause.ai_understanding:
-                progress_update(document_id, message=f"Analyzing RBI clause {rbi_clause.id}")
+                progress_update(document_id, "analyzing", message=f"Analyzing RBI clause {rbi_clause.id}")
+                progress_update(document_id, "thinking", message=f"Thinking about RBI clause {rbi_clause.id}")
+                response_started = False
+
+                def on_chunk(chunk: str) -> None:
+                    nonlocal response_started
+                    if not response_started:
+                        progress_update(
+                            document_id,
+                            "generating_response",
+                            f"Generating response for RBI clause {rbi_clause.id}",
+                        )
+                        response_started = True
+                    append_chunk(document_id, chunk)
+
                 understanding = await generate_rbi_understanding(
                     rbi_clause.clause_text,
                     rbi_clause.predefined_meaning,
                     provider=provider,
                     model=resolved_model,
-                    on_chunk=lambda chunk: append_chunk(document_id, chunk)
+                    on_chunk=on_chunk,
                 )
                 rbi_clause.ai_understanding = understanding
                 db.commit()
