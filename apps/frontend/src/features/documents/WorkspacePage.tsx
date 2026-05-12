@@ -103,7 +103,9 @@ function DocumentCard({
           setLiveStatus(finalStatus);
           setLiveProgress(data);
           queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
-          queryClient.invalidateQueries({ queryKey: ["results", sessionId, doc.id] });
+          queryClient.invalidateQueries({
+            queryKey: ["results", sessionId, doc.id],
+          });
           eventSource.close();
         }
       } catch (error) {
@@ -268,7 +270,9 @@ function DocumentCard({
                     logEvent("Status refresh requested", {
                       documentId: doc.id,
                     });
-                    queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
+                    queryClient.invalidateQueries({
+                      queryKey: ["session", sessionId],
+                    });
                   }}
                 >
                   <RefreshCw className="h-3 w-3" />
