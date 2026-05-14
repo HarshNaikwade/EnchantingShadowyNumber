@@ -1,7 +1,8 @@
-# DEV ONLY — Remove or gate behind an env flag before production.
+# DEV ONLY — Gated behind ENABLE_DEV_ROUTES env var.
+# Production deployments should NOT enable this.
+import os
 import hashlib
 import difflib
-import os
 import re
 import logging
 
@@ -14,6 +15,19 @@ from core.config import UPLOAD_DIR
 
 router = APIRouter(prefix="/api/dev", tags=["dev"])
 logger = logging.getLogger(__name__)
+
+# Gate dev routes behind environment variable
+ENABLE_DEV_ROUTES = os.getenv("ENABLE_DEV_ROUTES", "false").lower() == "true"
+
+
+def check_dev_enabled():
+    """Dependency to check if dev routes are enabled."""
+    if not ENABLE_DEV_ROUTES:
+        raise HTTPException(
+            status_code=403,
+            detail="Dev routes are disabled. Set ENABLE_DEV_ROUTES=true to enable."
+        )
+    return True
 
 
 def _sha256(text: str) -> str:
@@ -66,7 +80,11 @@ def _extract_parties(text: str) -> list[str]:
 
 
 @router.get("/document/{document_id}/parsed")
-async def get_parsed_document(document_id: int, db: Session = Depends(get_db)):
+async def get_parsed_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+    _: bool = Depends(check_dev_enabled),
+):
     """Return full parsing debug data for a document — DEV ONLY."""
     doc = db.query(Document).filter(Document.id == document_id).first()
     if not doc:
@@ -128,7 +146,10 @@ async def get_parsed_document(document_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/rbi/analyze")
-async def test_rbi_ai_analysis(db: Session = Depends(get_db)):
+async def test_rbi_ai_analysis(
+    db: Session = Depends(get_db),
+    _: bool = Depends(check_dev_enabled),
+):
     """Run AI understanding for every RBI clause — DEV ONLY."""
     from services.ai.analyzer import generate_rbi_understanding, get_active_provider, check_ai_connection
 

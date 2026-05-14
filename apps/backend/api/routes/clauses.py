@@ -17,8 +17,8 @@ from services.ai.analyzer import (
     OLLAMA_MODEL,
 )
 
-from core.analysis_progress_simple import (
-    emit_started, emit_clause_progress, emit_clause_completed, 
+from core.progress_manager import (
+    emit_started, emit_clause_progress, emit_clause_completed,
     emit_completed, emit_error, get_event_json, get_next_event, AnalysisEvent
 )
 router = APIRouter(prefix="/api/clauses", tags=["clauses"])

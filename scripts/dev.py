@@ -5,16 +5,23 @@ import sys
 import os
 import signal
 import time
+import venv
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+VENV_DIR = os.path.join(ROOT, ".venv")
 procs = []
 
 
+def venv_python():
+    """Get the path to the venv python executable."""
+    if os.name == "nt":
+        return os.path.join(VENV_DIR, "Scripts", "python.exe")
+    return os.path.join(VENV_DIR, "bin", "python")
+
+
 def python_bin():
-    venv_python = os.path.join(ROOT, ".venv", "Scripts", "python.exe")
-    if os.name != "nt":
-        venv_python = os.path.join(ROOT, ".venv", "bin", "python")
-    return venv_python if os.path.exists(venv_python) else sys.executable
+    venv_exe = venv_python()
+    return venv_exe if os.path.exists(venv_exe) else sys.executable
 
 
 def kill_all(sig=None, frame=None):
@@ -32,6 +39,22 @@ signal.signal(signal.SIGTERM, kill_all)
 
 
 def main():
+    # Auto-setup: Check if venv exists, if not run setup
+    if not os.path.exists(venv_python()):
+        print("\n" + "=" * 60)
+        print("  Virtual environment not found. Running setup...")
+        print("=" * 60)
+        setup_result = subprocess.run(
+            [sys.executable, os.path.join(ROOT, "scripts", "setup.py")],
+            cwd=ROOT
+        )
+        if setup_result.returncode != 0:
+            print("\nSetup failed. Please run: python scripts/setup.py")
+            sys.exit(1)
+        print("\n" + "=" * 60)
+        print("  Setup complete! Starting development servers...")
+        print("=" * 60)
+    
     env = os.environ.copy()
 
     backend = subprocess.Popen(
@@ -40,7 +63,7 @@ def main():
         env=env,
     )
     procs.append(backend)
-    print(f"Backend started  (PID {backend.pid}) — http://localhost:8000")
+    print(f"Backend started  (PID {backend.pid}) \u2014 http://localhost:8000")
 
     vite_bin = os.path.join(ROOT, "node_modules", ".bin", "vite")
     if os.name == "nt":
@@ -51,7 +74,7 @@ def main():
         env=env,
     )
     procs.append(frontend)
-    print(f"Frontend started (PID {frontend.pid}) — http://localhost:5000")
+    print(f"Frontend started (PID {frontend.pid}) \u2014 http://localhost:5000")
     print("\nPress Ctrl+C to stop both services.\n")
 
     backend.wait()

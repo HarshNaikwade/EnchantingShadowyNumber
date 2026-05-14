@@ -21,14 +21,14 @@ from services.ai.analyzer import (
     get_active_provider,
     OLLAMA_MODEL,
 )
-from core.progress import (
-    start as progress_start,
-    update as progress_update,
-    append_chunk,
-    set_error,
-    complete as progress_complete,
-    get as get_progress,
-    get_next_event as get_progress_event,
+from core.progress_manager import (
+    start_document,
+    update_document,
+    append_document_chunk,
+    set_document_error,
+    complete_document,
+    get_document_progress,
+    get_next_document_event,
 )
 from core.config import UPLOAD_DIR, MAX_UPLOAD_MB
 
@@ -56,7 +56,7 @@ async def _run_ai_analysis_async(document_id: int, db_url: str):
 
     try:
         logger.info("Starting AI analysis for document %s", document_id)
-        progress_start(document_id, "starting", "Initializing analysis")
+        start_document(document_id, "starting", "Initializing analysis")
         doc = db.query(Document).filter(Document.id == document_id).first()
         if not doc:
             return
@@ -74,13 +74,13 @@ async def _run_ai_analysis_async(document_id: int, db_url: str):
 
         if not doc.extracted_text:
             _set_doc_status("failed", "failed")
-            set_error(document_id, "Document has no extracted text", status="failed")
+            set_document_error(document_id, "Document has no extracted text", status="failed")
             return
 
         rbi_clauses = db.query(RBIClause).all()
         if not rbi_clauses:
             _set_doc_status("completed", "completed")
-            progress_complete(document_id, status="completed")
+            complete_document(document_id, status="completed")
             return
 
         provider = get_active_provider()
@@ -88,7 +88,7 @@ async def _run_ai_analysis_async(document_id: int, db_url: str):
         if not is_connected:
             logger.warning("%s not reachable, skipping AI analysis", provider.upper())
             _set_doc_status("completed_no_ai", "completed_no_ai")
-            set_error(document_id, f"{provider.upper()} not reachable", status="completed_no_ai")
+            set_document_error(document_id, f"{provider.upper()} not reachable", status="completed_no_ai")
             return
 
         if provider == "groq":
@@ -100,19 +100,19 @@ async def _run_ai_analysis_async(document_id: int, db_url: str):
             if not resolved_model:
                 logger.warning("No Ollama models available, skipping AI analysis")
                 _set_doc_status("completed_no_ai", "completed_no_ai")
-                set_error(document_id, "No Ollama models available", status="completed_no_ai")
+                set_document_error(document_id, "No Ollama models available", status="completed_no_ai")
                 return
 
-        progress_update(document_id, "analyzing", "Analyzing RBI clauses", status="processing")
+        update_document(document_id, "analyzing", "Analyzing RBI clauses", status="processing")
         for rbi_clause in rbi_clauses:
             if not rbi_clause.ai_understanding:
-                progress_update(
+                update_document(
                     document_id,
                     "analyzing",
                     message=f"Analyzing RBI clause {rbi_clause.id}",
                     status="processing",
                 )
-                progress_update(
+                update_document(
                     document_id,
                     "thinking",
                     message=f"Thinking about RBI clause {rbi_clause.id}",
@@ -123,14 +123,14 @@ async def _run_ai_analysis_async(document_id: int, db_url: str):
                 def on_chunk(chunk: str) -> None:
                     nonlocal response_started
                     if not response_started:
-                        progress_update(
+                        update_document(
                             document_id,
                             "generating_response",
                             f"Generating response for RBI clause {rbi_clause.id}",
                             status="processing",
                         )
                         response_started = True
-                    append_chunk(document_id, chunk)
+                    append_document_chunk(document_id, chunk)
 
                 understanding = await generate_rbi_understanding(
                     rbi_clause.clause_text,
@@ -142,7 +142,7 @@ async def _run_ai_analysis_async(document_id: int, db_url: str):
                 rbi_clause.ai_understanding = understanding
                 db.commit()
 
-        progress_update(
+        update_document(
             document_id,
             "extract_agreement",
             "Extracting agreement clauses",
@@ -152,7 +152,7 @@ async def _run_ai_analysis_async(document_id: int, db_url: str):
             doc.extracted_text,
             provider=provider,
             model=resolved_model,
-            on_chunk=lambda chunk: append_chunk(document_id, chunk)
+            on_chunk=lambda chunk: append_document_chunk(document_id, chunk)
         )
 
         existing = db.query(ComplianceResult).filter(
@@ -164,7 +164,7 @@ async def _run_ai_analysis_async(document_id: int, db_url: str):
             ).delete()
             db.commit()
 
-        progress_update(
+        update_document(
             document_id,
             "check_compliance",
             "Checking compliance",
@@ -173,7 +173,7 @@ async def _run_ai_analysis_async(document_id: int, db_url: str):
         for idx, rbi_clause in enumerate(rbi_clauses):
             if idx > 0 and provider == "groq":
                 await asyncio.sleep(2)
-            progress_update(
+            update_document(
                 document_id,
                 message=f"Checking RBI clause {rbi_clause.id}",
                 status="processing",
@@ -186,7 +186,7 @@ async def _run_ai_analysis_async(document_id: int, db_url: str):
                 document_type=doc.file_type,
                 provider=provider,
                 model=resolved_model,
-                on_chunk=lambda chunk: append_chunk(document_id, chunk)
+                on_chunk=lambda chunk: append_document_chunk(document_id, chunk)
             )
 
             compliance = ComplianceResult(
@@ -208,7 +208,7 @@ async def _run_ai_analysis_async(document_id: int, db_url: str):
             session.status = "completed"
         db.commit()
         logger.info("AI analysis completed for document %s", document_id)
-        progress_complete(document_id, status="completed")
+        complete_document(document_id, status="completed")
 
     except Exception:
         logger.exception("AI analysis failed for document %s", document_id)
@@ -219,7 +219,7 @@ async def _run_ai_analysis_async(document_id: int, db_url: str):
             if sess:
                 sess.status = "failed"
             db.commit()
-        set_error(document_id, "AI analysis failed. Check backend logs for details.", status="failed")
+        set_document_error(document_id, "AI analysis failed. Check backend logs for details.", status="failed")
     finally:
         db.close()
 
@@ -340,8 +340,8 @@ def get_document_status(document_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{document_id}/progress")
-def get_document_progress(document_id: int):
-    progress = get_progress(document_id)
+def get_document_progress_endpoint(document_id: int):
+    progress = get_document_progress(document_id)
     if not progress:
         raise HTTPException(status_code=404, detail="No progress available")
     return progress
@@ -350,7 +350,7 @@ def get_document_progress(document_id: int):
 @router.get("/{document_id}/progress/stream")
 async def stream_document_progress(document_id: int):
     async def event_generator() -> AsyncGenerator[str, None]:
-        current = get_progress(document_id)
+        current = get_document_progress(document_id)
         if current:
             yield f"data: {json.dumps(current)}\n\n"
             if current.get("done"):
@@ -360,7 +360,7 @@ async def stream_document_progress(document_id: int):
             try:
                 event = await asyncio.get_event_loop().run_in_executor(
                     None,
-                    lambda: get_progress_event(document_id, timeout=15),
+                    lambda: get_next_document_event(document_id, timeout=15),
                 )
                 if event is None:
                     yield ": keepalive\n\n"

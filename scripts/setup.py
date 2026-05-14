@@ -33,16 +33,19 @@ def main():
     else:
         print(f"  Reusing {VENV_DIR}")
 
-    # Python dependencies
-    print("\n[2/5] Installing Python dependencies...")
-    run(f'"{venv_python()}" -m pip install -r apps/backend/requirements.txt')
+    # Upgrade pip first
+    print("  Upgrading pip...")
+    run(f'"{venv_python()}" -m pip install --upgrade pip')
 
-    # Node dependencies
-    print("\n[3/5] Installing Node dependencies...")
-    if not os.path.exists(os.path.join(ROOT, "node_modules")):
-        run("npm install")
-    else:
-        print("  node_modules already exists, skipping.")
+    # Python dependencies (with upgrade)
+    print("\n[2/5] Installing/Upgrading Python dependencies...")
+    run(f'"{venv_python()}" -m pip install --upgrade -r apps/backend/requirements.txt')
+
+    # Node dependencies (with update)
+    print("\n[3/5] Installing/Updating Node dependencies...")
+    run("npm install")  # npm install also checks and updates based on package.json
+    print("  Updating npm packages to latest versions...")
+    run("npm update")
 
     # Required directories
     print("\n[4/5] Creating required directories...")
