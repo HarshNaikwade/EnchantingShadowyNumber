@@ -5,12 +5,21 @@ import sys
 import os
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
+VENV_DIR = os.path.join(ROOT, ".venv")
+
+
+def venv_python():
+    """Get the path to the venv python executable."""
+    if os.name == "nt":
+        return os.path.join(VENV_DIR, "Scripts", "python.exe")
+    return os.path.join(VENV_DIR, "bin", "python")
 
 
 def run_script(script_name):
-    """Run a Python script in the scripts directory."""
+    """Run a Python script in the scripts directory using venv."""
     script_path = os.path.join(ROOT, "scripts", script_name)
-    result = subprocess.run([sys.executable, script_path], cwd=ROOT)
+    python_exe = venv_python()
+    result = subprocess.run([python_exe, script_path], cwd=ROOT)
     return result.returncode
 
 
