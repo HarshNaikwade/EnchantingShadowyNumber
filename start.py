@@ -4,7 +4,7 @@ import subprocess
 import sys
 import os
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.abspath(__file__))
 
 
 def run_script(script_name):
@@ -47,6 +47,11 @@ Examples:
     else:  # dev
         print("\nStarting development servers...")
         return run_script("dev.py")
+
+
+if __name__ == "__main__":
+    exit_code = main()
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":
