@@ -2,7 +2,94 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Backend: dev server",
+      "label": "▶️ Start Project (All-in-One)",
+      "type": "shell",
+      "command": "python",
+      "args": ["start.py", "dev"],
+      "isBackground": true,
+      "problemMatcher": [
+        {
+          "pattern": {
+            "regexp": "^(.*)$",
+            "line": 1
+          },
+          "background": {
+            "activeOnStart": true,
+            "beginsPattern": "^.*Starting development servers.*$",
+            "endsPattern": "^.*Press Ctrl.*$"
+          }
+        }
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": false
+      }
+    },
+    {
+      "label": "🔧 Setup Project (First Time Only)",
+      "type": "shell",
+      "command": "python",
+      "args": ["start.py", "setup"],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "new"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "📦 Update All Dependencies",
+      "type": "shell",
+      "command": "python",
+      "args": ["start.py", "update"],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "new"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "🌱 Seed Database",
+      "type": "shell",
+      "command": "python",
+      "args": ["scripts/seed_db.py"],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "new"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "❤️ Health Check",
+      "type": "shell",
+      "command": "python",
+      "args": ["scripts/healthcheck.py"],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "new"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Backend: dev server (standalone)",
       "type": "shell",
       "command": ".venv/Scripts/python.exe",
       "args": [
@@ -19,20 +106,19 @@
       ],
       "isBackground": true,
       "problemMatcher": [],
-      "group": "build"
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      }
     },
     {
-      "label": "Frontend: dev server",
+      "label": "Frontend: dev server (standalone)",
       "type": "shell",
       "command": "npx",
-      "args": [
-        "vite",
-        "apps/frontend",
-        "--host",
-        "0.0.0.0",
-        "--port",
-        "5173"
-      ],
+      "args": ["vite", "apps/frontend", "--host", "0.0.0.0", "--port", "5173"],
       "options": {
         "shell": {
           "executable": "C:\\Windows\\System32\\cmd.exe"
@@ -40,7 +126,13 @@
       },
       "isBackground": true,
       "problemMatcher": [],
-      "group": "build"
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      }
     }
   ]
 }
