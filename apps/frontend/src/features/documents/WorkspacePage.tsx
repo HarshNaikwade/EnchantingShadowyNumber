@@ -1,23 +1,23 @@
-import { useState, useCallback, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { useDropzone } from "react-dropzone";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AlertCircle,
   ArrowLeft,
-  Upload,
-  Download,
-  Trash2,
+  Calendar,
   ChevronDown,
   ChevronUp,
+  Download,
   FileText,
   Loader2,
-  Calendar,
-  Shield,
   RefreshCw,
-  AlertCircle,
+  Shield,
+  Trash2,
+  Upload,
 } from "lucide-react";
 import { format } from "date-fns";
-import apiClient, { type Document, type DocumentProgress } from "@/lib/api";
+import apiClient, { type Document, type RBIClause } from "@/lib/api";
 import { logError, logEvent } from "@/lib/debugLogger";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,12 +34,22 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { ComplianceTables } from "@/features/compliance/ComplianceTables";
 import { OllamaStatusBar } from "@/components/OllamaWarning";
+import { cn } from "@/lib/utils";
 
 const DOC_TYPES = ["Agreement", "Amendment", "Addendum", "MOU"];
-
 const DONE_STATUSES = new Set(["completed", "failed", "completed_no_ai"]);
 
-const statusBadge: Record<string, string> = {
+type BadgeVariant =
+  | "default"
+  | "secondary"
+  | "destructive"
+  | "outline"
+  | "success"
+  | "warning"
+  | "danger"
+  | "review";
+
+const statusBadge: Record<string, BadgeVariant> = {
   completed: "success",
   processing: "warning",
   queued: "secondary",
@@ -48,168 +58,144 @@ const statusBadge: Record<string, string> = {
   completed_no_ai: "review",
 };
 
+function safeFormatDate(dateInput: string): string {
+  try {
+    return format(new Date(dateInput), "PPp");
+  } catch {
+    return dateInput;
+  }
+}
+
 function DocumentCard({
   doc,
+  index,
   sessionId,
   rbiClauses,
-  index,
 }: {
   doc: Document;
-  sessionId: number;
-  rbiClauses: any[];
   index: number;
+  sessionId: number;
+  rbiClauses: RBIClause[];
 }) {
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(false);
-  const [editEffective, setEditEffective] = useState(doc.effective_date);
-  const [editCreation, setEditCreation] = useState(doc.creation_date);
-  const [editingDates, setEditingDates] = useState(false);
-  const [liveStatus, setLiveStatus] = useState(doc.processing_status);
-  const [liveProgress, setLiveProgress] = useState<DocumentProgress | null>(
-    null,
-  );
+  const [effectiveDate, setEffectiveDate] = useState(doc.effective_date);
+  const [creationDate, setCreationDate] = useState(doc.creation_date);
+  const [datesDirty, setDatesDirty] = useState(false);
 
-  const formatProgressStep = (step: string) => {
-    if (step === "thinking") return "Thinking";
-    if (step === "generating_response") return "Generating response";
-    return step.replace(/_/g, " ");
-  };
+  const isDone = DONE_STATUSES.has(doc.processing_status);
 
-  const currentStatus = liveStatus;
-  const isDone = DONE_STATUSES.has(currentStatus);
+  const { data: progress } = useQuery({
+    queryKey: ["documentProgress", doc.id],
+    queryFn: () => apiClient.getDocumentProgress(doc.id),
+    enabled: !isDone,
+    refetchInterval: 2000,
+  });
 
-  useEffect(() => {
-    if (DONE_STATUSES.has(currentStatus)) {
-      return;
-    }
-
-    const eventSource = new EventSource(
-      `/api/document/${doc.id}/progress/stream`,
-    );
-
-    const handleMessage = (event: MessageEvent) => {
-      try {
-        const data = JSON.parse(event.data) as DocumentProgress & {
-          status?: string;
-        };
-
-        setLiveProgress(data);
-        if (data.status) {
-          setLiveStatus(data.status);
-        }
-
-        if (data.done) {
-          const finalStatus = data.status || doc.processing_status;
-          setLiveStatus(finalStatus);
-          setLiveProgress(data);
-          queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
-          queryClient.invalidateQueries({
-            queryKey: ["results", sessionId, doc.id],
-          });
-          eventSource.close();
-        }
-      } catch (error) {
-        logError("Failed to parse document progress event", error);
-      }
-    };
-
-    eventSource.addEventListener("message", handleMessage);
-    eventSource.onerror = () => {
-      eventSource.close();
-    };
-
-    return () => {
-      eventSource.close();
-    };
-  }, [currentStatus, doc.id, doc.processing_status, queryClient, sessionId]);
+  const liveStatus = progress?.done
+    ? progress?.error
+      ? "failed"
+      : doc.processing_status
+    : doc.processing_status;
 
   const deleteMutation = useMutation({
     mutationFn: () => apiClient.deleteDocument(doc.id),
     onSuccess: () => {
-      logEvent("Document deleted", { documentId: doc.id });
       queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
+      queryClient.invalidateQueries({
+        queryKey: ["results", sessionId, doc.id],
+      });
     },
-    onError: (error) => logError("Failed to delete document", error),
+    onError: (error) => logError("Delete document failed", error),
   });
 
   const rerunMutation = useMutation({
     mutationFn: () => apiClient.rerunDocument(doc.id),
     onSuccess: () => {
-      logEvent("AI analysis re-queued", { documentId: doc.id });
-      setLiveStatus("queued");
-      setLiveProgress(null);
-      queryClient.removeQueries({ queryKey: ["results", sessionId, doc.id] });
+      logEvent("Document rerun queued", { documentId: doc.id });
       queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
+      queryClient.invalidateQueries({
+        queryKey: ["results", sessionId, doc.id],
+      });
+      queryClient.invalidateQueries({ queryKey: ["documentProgress", doc.id] });
     },
-    onError: (error) => logError("Failed to re-run analysis", error),
+    onError: (error) => logError("Rerun failed", error),
   });
 
   const updateDatesMutation = useMutation({
     mutationFn: () =>
-      apiClient.updateDocumentDates(doc.id, editEffective, editCreation),
+      apiClient.updateDocumentDates(doc.id, effectiveDate, creationDate),
     onSuccess: () => {
-      logEvent("Document dates updated", { documentId: doc.id });
-      setEditingDates(false);
+      setDatesDirty(false);
       queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
     },
-    onError: (error) => logError("Failed to update document dates", error),
+    onError: (error) => logError("Date update failed", error),
   });
 
   const reportUrl = apiClient.getDocumentReportUrl(sessionId, doc.id);
 
   return (
-    <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
-      <div className="flex items-center gap-3 p-4">
-        <div className="flex items-center gap-2 text-sm font-medium text-gray-700 flex-1 min-w-0">
-          <span className="text-muted-foreground w-6 shrink-0">{index}.</span>
+    <Card className="overflow-hidden">
+      <div className="flex items-center gap-3 p-4 border-b bg-white">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <span className="text-xs text-muted-foreground w-6 shrink-0">
+            {index}.
+          </span>
           <FileText className="h-4 w-4 text-primary shrink-0" />
           <div className="min-w-0">
-            <span className="font-semibold">{doc.file_type}</span>
-            <span className="text-muted-foreground"> — </span>
-            <span className="text-gray-600 truncate">
-              {doc.original_filename}
-            </span>
+            <p className="text-sm font-semibold truncate">
+              {doc.file_type} - {doc.original_filename}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Uploaded {safeFormatDate(doc.upload_date)}
+            </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+        <div className="hidden md:flex items-center gap-1 text-xs text-muted-foreground">
           <Calendar className="h-3 w-3" />
-          <span>Effective: {doc.effective_date}</span>
+          Effective: {doc.effective_date || "NA"}
         </div>
 
-        <Badge variant={statusBadge[currentStatus] as any} className="shrink-0">
-          {currentStatus === "processing" || currentStatus === "queued" ? (
+        <Badge variant={statusBadge[liveStatus] ?? "secondary"}>
+          {liveStatus === "processing" || liveStatus === "queued" ? (
             <span className="flex items-center gap-1">
               <Loader2 className="h-3 w-3 animate-spin" />
-              {currentStatus}
+              {liveStatus}
             </span>
           ) : (
-            currentStatus
+            liveStatus
           )}
         </Badge>
 
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1">
           <a href={reportUrl} download target="_blank" rel="noreferrer">
-            <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
+            <Button variant="outline" size="sm" className="h-8">
               <Download className="h-3.5 w-3.5" />
-              Report
             </Button>
           </a>
           <Button
             variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-destructive hover:text-destructive"
+            size="sm"
+            className="h-8 text-destructive hover:text-destructive"
             onClick={() => {
-              if (confirm("Delete this document?")) deleteMutation.mutate();
+              if (confirm("Delete this document?")) {
+                deleteMutation.mutate();
+              }
             }}
+            disabled={deleteMutation.isPending}
           >
-            <Trash2 className="h-4 w-4" />
+            {deleteMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Trash2 className="h-4 w-4" />
+            )}
           </Button>
           <Button
             variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => setExpanded(!expanded)}
+            size="sm"
+            className="h-8"
+            onClick={() => setExpanded((v) => !v)}
           >
             {expanded ? (
               <ChevronUp className="h-4 w-4" />
@@ -221,157 +207,92 @@ function DocumentCard({
       </div>
 
       {expanded && (
-        <div className="border-t">
-          <div className="p-4 bg-slate-50 flex flex-wrap items-end gap-4 border-b">
-            <div className="flex items-center gap-3">
+        <div className="bg-slate-50">
+          <div className="p-4 border-b space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
               <div className="space-y-1">
                 <Label className="text-xs">Effective Date</Label>
                 <Input
-                  className="h-8 text-xs w-36"
-                  value={editEffective}
+                  value={effectiveDate}
                   onChange={(e) => {
-                    setEditEffective(e.target.value);
-                    setEditingDates(true);
+                    setEffectiveDate(e.target.value);
+                    setDatesDirty(true);
                   }}
+                  className="h-8 text-xs"
                 />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Creation Date</Label>
                 <Input
-                  className="h-8 text-xs w-36"
-                  value={editCreation}
+                  value={creationDate}
                   onChange={(e) => {
-                    setEditCreation(e.target.value);
-                    setEditingDates(true);
+                    setCreationDate(e.target.value);
+                    setDatesDirty(true);
                   }}
+                  className="h-8 text-xs"
                 />
               </div>
-           <div className="flex flex-col xs:flex-row xs:items-center gap-2 xs:gap-3 p-2 xs:p-4">
-             <div className="flex items-center gap-1 xs:gap-2 text-xs xs:text-sm font-medium text-gray-700 flex-1 min-w-0 order-2 xs:order-1">
-               <span className="text-muted-foreground text-xs xs:w-6 shrink-0">{index}.</span>
-               <FileText className="h-3 xs:h-4 w-3 xs:w-4 text-primary shrink-0" />
-               <div className="min-w-0 flex-1">
-                 <span className="font-semibold text-xs xs:text-sm">{doc.file_type}</span>
-                 <span className="text-muted-foreground text-xs"> — </span>
-                 <span className="text-gray-600 truncate text-xs xs:text-sm">
-                </Button>
-              )}
-            </div>
-
-            {(currentStatus === "processing" || currentStatus === "queued") && (
-           <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 gap-2 xs:gap-3 text-xs">
-               <Calendar className="h-3 w-3 hidden xs:inline" />
-               <span className="text-muted-foreground font-medium text-xs">Type</span>
+              <div className="flex gap-2">
                 <Button
-                  variant="ghost"
                   size="sm"
-               <span className="text-muted-foreground font-medium text-xs">
-                  onClick={() => {
-                   <Loader2 className="h-2 xs:h-3 w-2 xs:w-3 animate-spin" />
-                      documentId: doc.id,
-                    });
-                    queryClient.invalidateQueries({
-               <span className="text-muted-foreground font-medium text-xs">
-                    });
-                  }}
+                  className="h-8 text-xs"
+                  disabled={!datesDirty || updateDatesMutation.isPending}
+                  onClick={() => updateDatesMutation.mutate()}
                 >
-             <div className="flex gap-1 shrink-0 w-full xs:w-auto order-4 xs:order-4">
+                  {updateDatesMutation.isPending && (
+                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  )}
+                  Save Dates
                 </Button>
-                   <Button variant="outline" size="sm" className="h-8 text-xs gap-1 flex-1 xs:flex-none px-2">
-                     <Download className="h-3 xs:h-3.5 w-3 xs:w-3.5" />
-                     <span className="hidden xs:inline">Report</span>
-            {liveProgress &&
-               className="text-xs h-7 px-2 w-full xs:w-auto"
-               <Button
-                 variant="ghost"
-                 size="icon"
-                 className="h-8 w-8 p-1"
-                    <span className="capitalize">
-                      {formatProgressStep(liveProgress.step)}
-             <div className="grid grid-cols-1 xs:grid-cols-2 gap-2">
-                   <ChevronUp className="h-3 xs:h-4 w-3 xs:w-4" />
-                 ) : (
-                 <Input
-                   type="date"
-                   value={editEffective}
-                   onChange={(e) => setEditEffective(e.target.value)}
-                   className="h-7 text-xs w-full"
-                 size="icon"
-                 className="h-8 w-8 p-1 text-destructive hover:text-destructive"
-                      {liveProgress.message}
-                    </div>
-                 <Input
-                   type="date"
-                   value={editCreation}
-                   onChange={(e) => setEditCreation(e.target.value)}
-                   className="h-7 text-xs w-full"
-                  )}
-                  {liveProgress.error && (
-                    <div className="mt-2 text-xs text-destructive">
-                      {liveProgress.error}
-                    </div>
-                  )}
-                </div>
-               size="sm"
-               className="text-xs h-7 px-2 xs:px-3"
-            {currentStatus === "completed_no_ai" && (
-              <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-1.5 ml-auto">
-                <AlertCircle className="h-3.5 w-3.5" />
-                AI provider was not reachable during analysis.
+              </div>
+              <div className="flex gap-2 justify-start lg:justify-end">
                 <Button
-                  variant="outline"
                   size="sm"
-                  className="h-6 px-2 text-xs ml-1"
+                  variant="outline"
+                  className="h-8 text-xs"
                   disabled={rerunMutation.isPending}
                   onClick={() => rerunMutation.mutate()}
                 >
-                   <Loader2 className="h-2 xs:h-3 w-2 xs:w-3 mr-1 animate-spin" />
-                    <Loader2 className="h-3 w-3 animate-spin" />
+                  {rerunMutation.isPending ? (
+                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
                   ) : (
-                    <>
-                      <RefreshCw className="h-3 w-3 mr-1" />
-                      Re-run Analysis
-                    </>
-               <div className="p-2 xs:p-3 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700 flex flex-col xs:flex-row xs:items-center gap-1 xs:gap-2">
-                 <AlertCircle className="h-3 xs:h-4 w-3 xs:w-4 shrink-0" />
+                    <RefreshCw className="h-3 w-3 mr-1" />
+                  )}
+                  Re-run Analysis
+                </Button>
+              </div>
+            </div>
+
+            {progress && !progress.done && (
+              <div className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-3 py-2">
+                <p className="font-medium capitalize">
+                  {progress.step.replace(/_/g, " ")}
+                </p>
+                {progress.message && (
+                  <p className="mt-0.5">{progress.message}</p>
+                )}
               </div>
             )}
 
-            {currentStatus === "failed" && (
-              <div className="flex items-center gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded px-3 py-1.5 ml-auto">
+            {progress?.error && (
+              <div className="flex items-center gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded px-3 py-2">
                 <AlertCircle className="h-3.5 w-3.5" />
-                Analysis failed.
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-6 px-2 text-xs ml-1"
-                 size="sm"
-                 className="text-xs h-7 gap-1 px-2 w-full"
-                >
-                  {rerunMutation.isPending ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                   <Loader2 className="h-2 xs:h-3 w-2 xs:w-3 animate-spin" />
-                      <RefreshCw className="h-3 w-3 mr-1" />
-                      Re-run Analysis
-                    </>
-                  )}
-                </Button>
+                {progress.error}
               </div>
             )}
           </div>
 
-          <div className="p-4">
+          <div className="p-4 bg-white">
             <ComplianceTables
               sessionId={sessionId}
               documentId={doc.id}
               rbiClauses={rbiClauses}
-              isComplete={isDone}
+              isComplete={DONE_STATUSES.has(liveStatus)}
             />
           </div>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -379,105 +300,98 @@ export default function WorkspacePage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
   const sessionId = Number(id);
 
   const [docType, setDocType] = useState("Agreement");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const { data: session, isLoading } = useQuery({
     queryKey: ["session", sessionId],
     queryFn: () => apiClient.getSession(sessionId),
+    enabled: Number.isFinite(sessionId),
   });
 
   const { data: rbiClauses = [] } = useQuery({
     queryKey: ["rbiClauses", sessionId],
     queryFn: () => apiClient.getRBIClauses(sessionId),
+    enabled: Number.isFinite(sessionId),
   });
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    if (acceptedFiles.length > 0) {
-      setSelectedFile(acceptedFiles[0]);
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) =>
+      apiClient.uploadDocument(sessionId, file, docType),
+    onSuccess: () => {
+      setSelectedFile(null);
       setUploadError(null);
-      logEvent("File selected", { name: acceptedFiles[0].name });
-    }
-  }, []);
+      queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
+    },
+    onError: (error: unknown) => {
+      logError("Upload failed", error);
+      setUploadError("Upload failed. Please try again.");
+    },
+  });
+
+  const onDrop = (files: File[]) => {
+    if (!files.length) return;
+    setSelectedFile(files[0]);
+    setUploadError(null);
+    logEvent("File selected", { fileName: files[0].name });
+  };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
+    maxFiles: 1,
     accept: {
       "application/pdf": [".pdf"],
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
         [".docx"],
     },
-    maxFiles: 1,
   });
 
-  const handleUpload = async () => {
+  const handleUpload = () => {
     if (!selectedFile) return;
-    setUploading(true);
-    setUploadError(null);
-    try {
-      logEvent("Upload started", { sessionId, fileName: selectedFile.name });
-      await apiClient.uploadDocument(sessionId, selectedFile, docType);
-     <header className="bg-white border-b px-2 xs:px-4 sm:px-6 py-2 xs:py-3 sm:py-4">
-      logEvent("Upload completed", { sessionId, fileType: docType });
-      queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
-    } catch (err: any) {
-      setUploadError(
-        err.response?.data?.detail || "Upload failed. Please try again.",
-      );
-      logError("Upload failed", err);
-         <h1 className="text-lg xs:text-2xl sm:text-3xl font-bold text-gray-900 truncate">Session — {session.name}</h1>
-      setUploading(false);
-            Created on {format(new Date(session.created_at), "PPp")}
+    uploadMutation.mutate(selectedFile);
   };
 
-  const reportUrl = apiClient.getReportUrl(sessionId);
-
-     <div className="flex-1 px-2 xs:px-4 sm:px-6 py-4 xs:py-6 space-y-6 xs:space-y-8 max-w-7xl mx-auto w-full">
+  if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-       <div {...getRootProps()} className={cn(
-         "border-2 border-dashed rounded-lg p-4 xs:p-6 sm:p-8 text-center cursor-pointer transition-all",
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
     );
   }
 
   if (!session) {
     return (
-             <Loader2 className="h-6 xs:h-8 w-6 xs:w-8 mx-auto mb-2 xs:mb-3 animate-spin text-primary" />
-             <p className="text-xs xs:text-sm font-medium">Uploading {uploadMutation.variables?.files.length} file(s)...</p>
-        <Button onClick={() => navigate("/")}>Go to Dashboard</Button>
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3">
+        <p className="text-muted-foreground">Session not found.</p>
+        <Button onClick={() => navigate("/")}>Back to Sessions</Button>
       </div>
     );
-             <Upload className="h-6 xs:h-8 w-6 xs:w-8 mx-auto mb-2 xs:mb-3 text-primary" />
-             <p className="text-xs xs:text-sm font-medium">Drop files here...</p>
+  }
+
+  const reportUrl = apiClient.getReportUrl(sessionId);
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-white shadow-sm sticky top-0 z-10">
-             <Upload className="h-6 xs:h-8 w-6 xs:w-8 mx-auto mb-2 xs:mb-3 text-gray-400" />
-             <p className="text-xs xs:text-sm font-medium">Drag & drop documents here, or click to select</p>
-             <p className="text-xs text-muted-foreground mt-0.5 xs:mt-1">Supported: PDF, TXT, DOCX</p>
-              variant="ghost"
-              size="icon"
-              onClick={() => navigate("/")}
-              className="shrink-0"
-            >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
               <ArrowLeft className="h-4 w-4" />
-           <h2 className="text-lg xs:text-xl font-semibold text-gray-800 flex items-center gap-2">
-             <FileText className="h-4 xs:h-5 w-4 xs:w-5" />
-              <Shield className="h-5 w-5 text-primary" />
-              <div>
-                <h1 className="text-lg font-bold text-gray-900 leading-none">
-                  {session.title}
-                </h1>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Created {format(new Date(session.created_at), "dd MMM yyyy")}{" "}
-                  • {session.documents.length} document
-                  {session.documents.length !== 1 ? "s" : ""}
-                </p>
-              </div>
+            </Button>
+            <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center shrink-0">
+              <Shield className="h-5 w-5 text-white" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-lg font-bold text-gray-900 truncate">
+                Session - {session.title}
+              </h1>
+              <p className="text-xs text-muted-foreground">
+                Created {safeFormatDate(session.created_at)}
+              </p>
             </div>
             <div className="ml-auto flex items-center gap-2">
               <OllamaStatusBar />
@@ -494,15 +408,15 @@ export default function WorkspacePage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         <Card>
-          <CardHeader className="pb-3">
+          <CardHeader>
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Upload className="h-4 w-4 text-primary" />
               Upload Document
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex flex-wrap gap-4 items-end">
-              <div className="space-y-1.5 w-44">
+            <div className="flex flex-wrap gap-3 items-end">
+              <div className="space-y-1.5 w-48">
                 <Label className="text-xs">Document Type</Label>
                 <Select value={docType} onValueChange={setDocType}>
                   <SelectTrigger className="h-9 text-sm">
@@ -518,43 +432,41 @@ export default function WorkspacePage() {
                 </Select>
               </div>
 
-              <div className="flex-1 min-w-64">
+              <div className="flex-1 min-w-[240px]">
                 <div
                   {...getRootProps()}
-                  className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${
+                  className={cn(
+                    "border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors",
                     isDragActive
                       ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50"
-                  }`}
+                      : "border-border hover:border-primary/50",
+                  )}
                 >
                   <input {...getInputProps()} />
                   {selectedFile ? (
                     <div className="flex items-center justify-center gap-2 text-sm">
                       <FileText className="h-4 w-4 text-primary" />
-                      <span className="font-medium text-gray-800">
+                      <span className="font-medium text-gray-800 truncate max-w-[70%]">
                         {selectedFile.name}
-                      </span>
-                      <span className="text-muted-foreground text-xs">
-                        ({(selectedFile.size / 1024).toFixed(1)} KB)
                       </span>
                     </div>
                   ) : (
                     <div className="text-sm text-muted-foreground">
                       <Upload className="h-5 w-5 mx-auto mb-1 text-muted-foreground/60" />
                       {isDragActive
-                        ? "Drop file here..."
-                        : "Drag & drop or click to select PDF/DOCX"}
+                        ? "Drop file here"
+                        : "Drag/drop or click to choose PDF or DOCX"}
                     </div>
                   )}
                 </div>
               </div>
 
               <Button
+                className="h-9"
                 onClick={handleUpload}
-                disabled={!selectedFile || uploading}
-                className="h-9 shrink-0"
+                disabled={!selectedFile || uploadMutation.isPending}
               >
-                {uploading ? (
+                {uploadMutation.isPending ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     Uploading...
@@ -590,21 +502,23 @@ export default function WorkspacePage() {
           </div>
 
           {session.documents.length === 0 ? (
-            <div className="text-center py-12 border-2 border-dashed border-border rounded-xl">
-              <FileText className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-              <p className="text-muted-foreground text-sm">
-                No documents uploaded yet. Upload your first agreement above.
-              </p>
-            </div>
+            <Card>
+              <CardContent className="py-10 text-center">
+                <FileText className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
+                <p className="text-sm text-muted-foreground">
+                  No documents uploaded yet. Upload your first file above.
+                </p>
+              </CardContent>
+            </Card>
           ) : (
             <div className="space-y-3">
-              {session.documents.map((doc, i) => (
+              {session.documents.map((doc, idx) => (
                 <DocumentCard
                   key={doc.id}
                   doc={doc}
+                  index={idx + 1}
                   sessionId={sessionId}
                   rbiClauses={rbiClauses}
-                  index={i + 1}
                 />
               ))}
             </div>

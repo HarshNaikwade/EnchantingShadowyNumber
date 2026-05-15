@@ -1,7 +1,7 @@
-import { useState, useMemo, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, ArrowUpDown } from "lucide-react";
-import apiClient, { type ComplianceResult, type RBIClause } from "@/lib/api";
+import { ArrowUpDown, Search } from "lucide-react";
+import apiClient, { type RBIClause } from "@/lib/api";
 import {
   Table,
   TableBody,
@@ -11,21 +11,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-
-const complianceBadge = (status: string) => {
-  if (status === "Compliant") return "success";
-  if (status === "Non-Compliant") return "danger";
-  return "review";
-};
-
-const riskColor = (score: number) => {
-  if (score <= 30) return "bg-green-500";
-  if (score <= 60) return "bg-amber-500";
-  return "bg-red-500";
-};
 
 interface Props {
   sessionId: number;
@@ -33,6 +20,20 @@ interface Props {
   rbiClauses: RBIClause[];
   isComplete?: boolean;
 }
+
+type SortField = "risk_score" | "compliance_status" | null;
+
+const complianceBadge = (status: string): "success" | "danger" | "review" => {
+  if (status === "Compliant") return "success";
+  if (status === "Non-Compliant") return "danger";
+  return "review";
+};
+
+const riskColor = (score: number): string => {
+  if (score <= 30) return "bg-green-500";
+  if (score <= 60) return "bg-amber-500";
+  return "bg-red-500";
+};
 
 export function ComplianceTables({
   sessionId,
@@ -43,9 +44,7 @@ export function ComplianceTables({
   const [search1, setSearch1] = useState("");
   const [search2, setSearch2] = useState("");
   const [search3, setSearch3] = useState("");
-  const [sortField, setSortField] = useState<
-    "risk_score" | "compliance_status" | null
-  >(null);
+  const [sortField, setSortField] = useState<SortField>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [selectedRbiId, setSelectedRbiId] = useState<number | null>(null);
 
@@ -54,71 +53,80 @@ export function ComplianceTables({
     queryFn: () => apiClient.getDocumentResults(sessionId, documentId),
   });
 
-  const filteredRBI = useMemo(
+  const filteredRbiClauses = useMemo(
     () =>
-      rbiClauses.filter(
-        (c) =>
-          !search1 ||
-          c.clause_text.toLowerCase().includes(search1.toLowerCase()) ||
-          (c.predefined_meaning || "")
-            .toLowerCase()
-            .includes(search1.toLowerCase()) ||
-          (c.category || "").toLowerCase().includes(search1.toLowerCase()),
-      ),
+      rbiClauses.filter((clause) => {
+        const q = search1.trim().toLowerCase();
+        if (!q) return true;
+        return (
+          clause.clause_text.toLowerCase().includes(q) ||
+          (clause.predefined_meaning ?? "").toLowerCase().includes(q) ||
+          (clause.category ?? "").toLowerCase().includes(q)
+        );
+      }),
     [rbiClauses, search1],
   );
 
-  const filteredResults2 = useMemo(
+  const filteredAgreementRows = useMemo(
     () =>
-      results.filter(
-        (r) =>
-          !search2 ||
-          (r.ai_understanding_agreement || "")
-            .toLowerCase()
-            .includes(search2.toLowerCase()),
-      ),
+      results.filter((result) => {
+        const q = search2.trim().toLowerCase();
+        if (!q) return true;
+        return (
+          (result.ai_understanding_agreement ?? "").toLowerCase().includes(q) ||
+          (result.ai_understanding_rbi ?? "").toLowerCase().includes(q)
+        );
+      }),
     [results, search2],
   );
 
-  const sortedResults3 = useMemo(() => {
-    let filtered = results.filter(
-      (r) =>
-        !search3 ||
-        r.compliance_status.toLowerCase().includes(search3.toLowerCase()) ||
-        (r.agreement_reference || "")
-          .toLowerCase()
-          .includes(search3.toLowerCase()),
-    );
-    if (sortField) {
-      filtered = [...filtered].sort((a, b) => {
-        const aVal = a[sortField];
-        const bVal = b[sortField];
-        const dir = sortDir === "asc" ? 1 : -1;
-        if (typeof aVal === "number")
-          return ((aVal as number) - (bVal as number)) * dir;
-        return String(aVal).localeCompare(String(bVal)) * dir;
-      });
-    }
-    return filtered;
+  const sortedComplianceRows = useMemo(() => {
+    let rows = results.filter((result) => {
+      const q = search3.trim().toLowerCase();
+      if (!q) return true;
+      return (
+        result.compliance_status.toLowerCase().includes(q) ||
+        (result.agreement_reference ?? "").toLowerCase().includes(q)
+      );
+    });
+
+    if (!sortField) return rows;
+
+    rows = [...rows].sort((a, b) => {
+      const dir = sortDir === "asc" ? 1 : -1;
+      const aVal = a[sortField];
+      const bVal = b[sortField];
+
+      if (typeof aVal === "number" && typeof bVal === "number") {
+        return (aVal - bVal) * dir;
+      }
+
+      return String(aVal).localeCompare(String(bVal)) * dir;
+    });
+
+    return rows;
   }, [results, search3, sortField, sortDir]);
 
-  const toggleSort = (field: typeof sortField) => {
-    if (sortField === field) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else {
-      setSortField(field);
-      setSortDir("asc");
-    }
+  const getClauseText = (rbiClauseId: number): string => {
+    const clause = rbiClauses.find((item) => item.id === rbiClauseId);
+    return clause?.clause_text ?? `RBI #${rbiClauseId}`;
   };
 
-  const getClauseText = (id: number) => {
-    const c = rbiClauses.find((x) => x.id === id);
-    return c ? c.clause_text : `RBI #${id}`;
+  const toggleSort = (field: Exclude<SortField, null>) => {
+    if (sortField === field) {
+      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortField(field);
+    setSortDir("asc");
   };
 
   useEffect(() => {
     if (!selectedRbiId) return;
-    const el = document.getElementById(`rbi-${selectedRbiId}`);
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    const target = document.getElementById(`rbi-${selectedRbiId}`);
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
   }, [selectedRbiId]);
 
   if (isLoading) {
@@ -132,20 +140,21 @@ export function ComplianceTables({
   return (
     <div className="space-y-8">
       <section>
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-3 gap-3">
           <h4 className="font-semibold text-sm text-gray-800">
-            Table 1 — RBI Clauses
+            Table 1 - RBI Clauses
           </h4>
-          <div className="relative w-64">
+          <div className="relative w-full max-w-xs">
             <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
             <Input
               className="pl-8 h-8 text-xs"
-              placeholder="Search RBI clauses..."
+              placeholder="Search RBI clauses"
               value={search1}
               onChange={(e) => setSearch1(e.target.value)}
             />
           </div>
         </div>
+
         <div className="rounded-md border overflow-hidden">
           <Table>
             <TableHeader>
@@ -165,7 +174,7 @@ export function ComplianceTables({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredRBI.length === 0 ? (
+              {filteredRbiClauses.length === 0 ? (
                 <TableRow>
                   <TableCell
                     colSpan={4}
@@ -175,17 +184,17 @@ export function ComplianceTables({
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredRBI.map((clause, i) => (
+                filteredRbiClauses.map((clause, index) => (
                   <TableRow
                     key={clause.id}
                     id={`rbi-${clause.id}`}
                     data-state={
                       clause.id === selectedRbiId ? "selected" : undefined
                     }
-                    className={i % 2 === 0 ? "bg-white" : "bg-slate-50"}
+                    className={index % 2 === 0 ? "bg-white" : "bg-slate-50"}
                   >
                     <TableCell className="text-center font-medium text-muted-foreground">
-                      {i + 1}
+                      {index + 1}
                     </TableCell>
                     <TableCell className="text-xs max-w-xs">
                       {clause.category && (
@@ -198,7 +207,7 @@ export function ComplianceTables({
                       </p>
                     </TableCell>
                     <TableCell className="text-xs text-gray-600 max-w-xs">
-                      {clause.predefined_meaning || "—"}
+                      {clause.predefined_meaning || "-"}
                     </TableCell>
                     <TableCell className="text-xs text-gray-600 max-w-xs">
                       {clause.ai_understanding || (
@@ -217,19 +226,20 @@ export function ComplianceTables({
 
       <section>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
-          <h4 className="font-semibold text-sm text-gray-800 order-1">
-            Table 2 — Agreement Clause Analysis
+          <h4 className="font-semibold text-sm text-gray-800">
+            Table 2 - Agreement Clause Analysis
           </h4>
-          <div className="relative w-full sm:w-64 order-2 sm:order-3">
+          <div className="relative w-full sm:max-w-xs">
             <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
             <Input
               className="pl-8 h-8 text-xs"
-              placeholder="Search analysis..."
+              placeholder="Search AI understanding"
               value={search2}
               onChange={(e) => setSearch2(e.target.value)}
             />
           </div>
         </div>
+
         <div className="rounded-md border overflow-x-auto">
           <Table>
             <TableHeader>
@@ -237,45 +247,55 @@ export function ComplianceTables({
                 <TableHead className="text-white font-semibold w-12">
                   #
                 </TableHead>
-                <TableHead className="text-white font-semibold min-w-[200px] sm:min-w-0">
+                <TableHead className="text-white font-semibold min-w-[220px]">
                   RBI Clause Reference
                 </TableHead>
-                <TableHead className="text-white font-semibold min-w-[150px] sm:min-w-0">
+                <TableHead className="text-white font-semibold min-w-[220px]">
                   AI Understanding of Agreement
                 </TableHead>
-                <TableHead className="text-white font-semibold min-w-[150px] sm:min-w-0">
+                <TableHead className="text-white font-semibold min-w-[220px]">
+                  AI Understanding of RBI Clause
+                </TableHead>
+              </TableRow>
             </TableHeader>
             <TableBody>
-              {results.length === 0 ? (
+              {filteredAgreementRows.length === 0 ? (
                 <TableRow>
                   <TableCell
-                <TableCell className="text-xs max-w-xs sm:max-w-none px-2">
+                    colSpan={4}
                     className="text-center text-muted-foreground py-6 text-sm"
                   >
                     {results.length === 0
-                      ? "AI analysis in progress or not yet started..."
+                      ? "AI analysis in progress or not started"
                       : "No results found"}
                   </TableCell>
-                    {clause.clause_text.substring(0, 150)}...
+                </TableRow>
               ) : (
-                filteredResults2.map((result, i) => (
-                <TableCell className="text-xs text-gray-600 max-w-xs sm:max-w-none px-2">
+                filteredAgreementRows.map((result, index) => (
+                  <TableRow
                     key={result.id}
-                    className={`${i % 2 === 0 ? "bg-white" : "bg-slate-50"} cursor-pointer`}
-                <TableCell className="text-xs text-gray-700 max-w-xs sm:max-w-none px-2">
+                    className={`${index % 2 === 0 ? "bg-white" : "bg-slate-50"} cursor-pointer`}
+                    onClick={() => setSelectedRbiId(result.rbi_clause_id)}
                   >
                     <TableCell className="text-center font-medium text-muted-foreground">
-                      {i + 1}
+                      {index + 1}
                     </TableCell>
-                    <TableCell className="text-xs font-medium text-primary">
-                      <div className="whitespace-normal break-words max-w-xs">
+                    <TableCell className="text-xs font-medium text-primary max-w-xs">
+                      <div className="whitespace-normal break-words">
                         {getClauseText(result.rbi_clause_id)}
                       </div>
                     </TableCell>
-                    <TableCell className="text-xs text-gray-600 max-w-xl">
+                    <TableCell className="text-xs text-gray-600 max-w-sm">
                       {result.ai_understanding_agreement || (
                         <span className="text-muted-foreground italic">
                           Analyzing...
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs text-gray-600 max-w-sm">
+                      {result.ai_understanding_rbi || (
+                        <span className="text-muted-foreground italic">
+                          Pending...
                         </span>
                       )}
                     </TableCell>
@@ -288,20 +308,21 @@ export function ComplianceTables({
       </section>
 
       <section>
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
           <h4 className="font-semibold text-sm text-gray-800">
-            Table 3 — Compliance Report
+            Table 3 - Compliance Report
           </h4>
-          <div className="relative w-64">
+          <div className="relative w-full sm:max-w-xs">
             <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
             <Input
               className="pl-8 h-8 text-xs"
-              placeholder="Search compliance..."
+              placeholder="Search compliance"
               value={search3}
               onChange={(e) => setSearch3(e.target.value)}
             />
           </div>
         </div>
+
         <div className="rounded-md border overflow-hidden">
           <Table>
             <TableHeader>
@@ -334,26 +355,28 @@ export function ComplianceTables({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortedResults3.length === 0 ? (
+              {sortedComplianceRows.length === 0 ? (
                 <TableRow>
                   <TableCell
                     colSpan={5}
                     className="text-center text-muted-foreground py-6 text-sm"
                   >
                     {results.length === 0
-                      ? "Compliance analysis pending..."
-                      : "No results found"}
+                      ? isComplete
+                        ? "No compliance results available"
+                        : "Compliance analysis pending"
+                      : "No matching rows"}
                   </TableCell>
                 </TableRow>
               ) : (
-                sortedResults3.map((result, i) => (
+                sortedComplianceRows.map((result, index) => (
                   <TableRow
                     key={result.id}
-                    className={`${i % 2 === 0 ? "bg-white" : "bg-slate-50"} cursor-pointer`}
+                    className={`${index % 2 === 0 ? "bg-white" : "bg-slate-50"} cursor-pointer`}
                     onClick={() => setSelectedRbiId(result.rbi_clause_id)}
                   >
                     <TableCell className="text-center font-medium text-muted-foreground">
-                      {i + 1}
+                      {index + 1}
                     </TableCell>
                     <TableCell className="text-xs font-medium text-primary">
                       <div className="whitespace-normal break-words max-w-xs">
@@ -362,19 +385,17 @@ export function ComplianceTables({
                     </TableCell>
                     <TableCell>
                       <Badge
-                        variant={
-                          complianceBadge(result.compliance_status) as any
-                        }
+                        variant={complianceBadge(result.compliance_status)}
                       >
                         {result.compliance_status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="min-w-[140px]">
+                    <TableCell className="min-w-[150px]">
                       <div className="flex items-center gap-2">
                         <div className="relative flex-1 h-2 rounded-full bg-secondary overflow-hidden">
                           <div
                             className={cn(
-                              "absolute left-0 top-0 h-full rounded-full transition-all",
+                              "absolute left-0 top-0 h-full rounded-full",
                               riskColor(result.risk_score),
                             )}
                             style={{ width: `${result.risk_score}%` }}
@@ -386,7 +407,7 @@ export function ComplianceTables({
                       </div>
                     </TableCell>
                     <TableCell className="text-xs text-gray-600 max-w-sm">
-                      {result.agreement_reference || "—"}
+                      {result.agreement_reference || "-"}
                     </TableCell>
                   </TableRow>
                 ))

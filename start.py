@@ -23,6 +23,19 @@ def run_script(script_name, use_system_python=False):
     return result.returncode
 
 
+def ensure_venv():
+    """Ensure virtual environment exists before running venv-based commands."""
+    if os.path.exists(venv_python()):
+        return 0
+    print("\nVirtual environment not found. Running setup first...")
+    return run_script("setup.py", use_system_python=True)
+
+
+def run_docker(command):
+    """Run docker compose helper commands."""
+    return subprocess.run(["docker", "compose", command], cwd=ROOT).returncode
+
+
 def run_dev_directly():
     """Run the dev script directly in the current process to handle Ctrl+C properly."""
     import sys
@@ -47,13 +60,16 @@ Examples:
   python start.py setup        Setup/reset project
   python start.py update       Update all dependencies
   python start.py dev          Start development servers only
+    python start.py health       Run health checks
+    python start.py docker-up    Start containers with docker compose
+    python start.py docker-down  Stop containers
         """
     )
     parser.add_argument(
         "command",
         nargs="?",
         default="dev",
-        choices=["dev", "setup", "update"],
+        choices=["dev", "setup", "update", "health", "docker-up", "docker-down"],
         help="Command to run (default: dev)"
     )
 
@@ -62,12 +78,34 @@ Examples:
     if args.command == "setup":
         print("\nRunning project setup...")
         return run_script("setup.py", use_system_python=True)
-    elif args.command == "update":
+    if args.command == "update":
+        setup_code = ensure_venv()
+        if setup_code != 0:
+            return setup_code
         print("\nUpdating dependencies...")
         return run_script("update-deps.py")
-    else:  # dev
-        print("\nStarting development servers...")
-        return run_dev_directly()
+
+    if args.command == "health":
+        setup_code = ensure_venv()
+        if setup_code != 0:
+            return setup_code
+        print("\nRunning health checks...")
+        return run_script("healthcheck.py")
+
+    if args.command == "docker-up":
+        print("\nStarting docker compose services...")
+        return run_docker("up")
+
+    if args.command == "docker-down":
+        print("\nStopping docker compose services...")
+        return run_docker("down")
+
+    # dev
+    setup_code = ensure_venv()
+    if setup_code != 0:
+        return setup_code
+    print("\nStarting development servers...")
+    return run_dev_directly()
 
 
 if __name__ == "__main__":

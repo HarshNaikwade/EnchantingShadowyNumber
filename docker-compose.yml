@@ -11,11 +11,10 @@ services:
     volumes:
       - ./uploads:/app/uploads
       - ./logs:/app/logs
-      - ./apps/backend/compliance_checker.db:/app/compliance_checker.db
     environment:
       - BACKEND_PORT=8000
       - UPLOAD_DIR=/app/uploads
-      - FRONTEND_ORIGINS=http://frontend:80,http://localhost:5000
+      - FRONTEND_ORIGINS=http://localhost:5000,http://frontend:80
       - AI_PROVIDER=lmstudio
       - LMSTUDIO_BASE_URL=http://host.docker.internal:1234
       - LMSTUDIO_MODEL=google/gemma-4-e4b
@@ -42,8 +41,6 @@ services:
     container_name: frontend
     ports:
       - "5000:80"
-    environment:
-      - REACT_APP_API_URL=http://backend:8000
     depends_on:
       backend:
         condition: service_healthy

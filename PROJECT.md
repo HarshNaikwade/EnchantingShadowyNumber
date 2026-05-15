@@ -1,322 +1,99 @@
-# RBI Compliance Checker - Complete Project Guide
+# RBI Compliance Checker - Project Guide
 
-## 📋 Table of Contents
-
-1. [Quick Start](#quick-start)
-2. [Project Structure](#project-structure)
-3. [File Purpose Reference](#file-purpose-reference)
-4. [Setup Instructions](#setup-instructions)
-5. [How to Run](#how-to-run)
-6. [Development Workflow](#development-workflow)
-7. [Configuration & Environment](#configuration--environment)
-8. [Code Quality Improvements](#code-quality-improvements)
-9. [Troubleshooting](#troubleshooting)
-10. [API Documentation](#api-documentation)
-
----
-
-## 🚀 Quick Start
-
-### First Time Setup
+## Quick Start
 
 ```bash
-# Navigate to project directory
-cd "path/to/EnchantingShadowyNumber"
-
-# Run setup (creates .venv and installs dependencies)
 python start.py setup
-```
-
-### Daily Development
-
-```bash
-# Start both backend and frontend with auto-updates
 python start.py dev
 ```
 
-### That's it!
+- Frontend: `http://localhost:5000`
+- Backend API: `http://localhost:8000`
+- Swagger docs: `http://localhost:8000/docs`
 
-- Backend runs on: **http://localhost:8000**
-- Frontend runs on: **http://localhost:5000**
-- API Docs: **http://localhost:8000/docs**
+## Main Commands
 
----
+Use `start.py` as the single entrypoint:
 
-## 📁 Project Structure
-
+```bash
+python start.py setup       # Create .venv and install dependencies
+python start.py dev         # Start backend + frontend (auto setup if needed)
+python start.py update      # Update Python and Node dependencies
+python start.py health      # Run health checks
+python start.py docker-up   # Start containers with docker compose
+python start.py docker-down # Stop containers
 ```
+
+## Current Project Structure
+
+```text
 EnchantingShadowyNumber/
-│
-├── 📄 PROJECT.md                 ← This file (everything you need)
-├── 📄 README.md                  ← Project overview
-├── 📄 docker-compose.yml         ← Container orchestration
-├── 📄 pyproject.toml             ← Python project config
-├── 📄 package.json               ← Node.js dependencies
-├── 📄 .env.example               ← Environment template
-│
-├── 🔧 start.py                   ← Main project launcher (use this to run project)
-├── 🔧 scripts/
-│   ├── setup.py                  ← Initialize project and install dependencies
-│   ├── dev.py                    ← Start development servers
-│   ├── update-deps.py            ← Update all dependencies
-│   ├── healthcheck.py            ← Check service health
-│   └── seed_db.py                ← Populate database with sample data
-│
-├── 🖥️ apps/
-│   ├── backend/
-│   │   ├── main.py               ← FastAPI app entry point
-│   │   ├── requirements.txt      ← Python dependencies
-│   │   ├── Dockerfile            ← Docker configuration
-│   │   │
-│   │   ├── core/
-│   │   │   ├── config.py         ← Application configuration
-│   │   │   ├── progress_manager.py ← Unified progress tracking (CONSOLIDATED)
-│   │   │   ├── runtime_config.py ← Runtime AI provider configuration
-│   │   │   ├── runtime_config.json ← Provider settings storage
-│   │   │   ├── log_buffer.py     ← Log buffering utility
-│   │   │   └── __init__.py
-│   │   │
-│   │   ├── api/
-│   │   │   └── routes/
-│   │   │       ├── analysis.py   ← Clause analysis endpoints
-│   │   │       ├── clauses.py    ← RBI clause management
-│   │   │       ├── documents.py  ← Document upload & processing
-│   │   │       ├── reports.py    ← Report generation
-│   │   │       ├── settings.py   ← AI provider settings
-│   │   │       ├── debug.py      ← Debugging utilities
-│   │   │       └── dev.py        ← Dev-only endpoints (GATED)
-│   │   │
-│   │   ├── db/
-│   │   │   ├── models.py         ← SQLAlchemy ORM models
-│   │   │   ├── session.py        ← Database connection management
-│   │   │   ├── seed_data.py      ← Sample data initialization
-│   │   │   └── __init__.py
-│   │   │
-│   │   ├── services/
-│   │   │   ├── ai/
-│   │   │   │   ├── analyzer.py   ← AI analysis engine (Ollama/LMStudio/Groq)
-│   │   │   │   └── __init__.py
-│   │   │   │
-│   │   │   ├── parsing/
-│   │   │   │   ├── parser.py     ← Document parsing (PDF/DOCX)
-│   │   │   │   └── __init__.py
-│   │   │   │
-│   │   │   └── __init__.py
-│   │   │
-│   │   ├── utils/
-│   │   │   └── __init__.py
-│   │   │
-│   │   ├── workers/
-│   │   │   └── __init__.py
-│   │   │
-│   │   ├── uploads/              ← Uploaded documents storage
-│   │   ├── tests/                ← Test files
-│   │   └── __init__.py
-│   │
-│   └── frontend/
-│       ├── package.json          ← React dependencies
-│       ├── tsconfig.json         ← TypeScript configuration
-│       ├── vite.config.ts        ← Build tool configuration
-│       ├── index.html            ← Main HTML file
-│       ├── Dockerfile            ← Docker configuration
-│       │
-│       └── src/
-│           ├── main.tsx          ← React entry point
-│           ├── App.tsx           ← Root component
-│           ├── index.css         ← Global styles
-│           │
-│           ├── components/       ← Reusable UI components
-│           │   ├── DebugPanel.tsx
-│           │   ├── DevToolsPanel.tsx
-│           │   ├── OllamaWarning.tsx
-│           │   └── ui/           ← Radix UI primitives
-│           │
-│           ├── features/         ← Feature-specific components
-│           │   ├── clauses/
-│           │   ├── compliance/
-│           │   ├── documents/
-│           │   └── sessions/
-│           │
-│           ├── lib/              ← Utilities and helpers
-│           │   ├── api.ts        ← API client (Axios wrapper)
-│           │   ├── debugLogger.ts ← Debug logging
-│           │   └── utils.ts      ← Helper functions
-│           │
-│           ├── services/         ← Business logic layer
-│           │   └── api.ts        ← API service wrapper
-│           │
-│           └── types/            ← TypeScript type definitions
-│               └── index.ts
-│
-├── 📚 docs/
-│   └── architecture.md           ← System architecture documentation
-│
-├── 📦 shared/                    ← Shared resources
-│   ├── constants/
-│   └── types/
-│
-├── 📁 uploads/                   ← Temporary file storage
-└── 📁 logs/                      ← Application logs
+	start.py
+	PROJECT.md
+	README.md
+	docker-compose.yml
+	pyproject.toml
+	package.json
+	.env.example
 
+	scripts/
+		setup.py
+		dev.py
+		update-deps.py
+		healthcheck.py
+
+	apps/
+		backend/
+			main.py
+			requirements.txt
+			Dockerfile
+			api/routes/
+			core/
+			db/
+			services/
+			uploads/
+
+		frontend/
+			Dockerfile
+			index.html
+			src/
+				App.tsx
+				index.css
+				components/
+				features/
+				lib/
+				types/
+
+	docs/
+		architecture.md
+
+	uploads/
+	logs/
 ```
 
----
+## Notes
 
-## 📖 File Purpose Reference
+- Python dependencies are installed from `apps/backend/requirements.txt`.
+- Dependencies are intentionally unpinned to fetch latest compatible releases at install/update time.
+- SQLite DB files and generated runtime assets are gitignored.
+- `.gitkeep` files preserve empty runtime directories in git.
 
-### Root Level Files
+## Docker
 
-| File                   | Purpose                                               |
-| ---------------------- | ----------------------------------------------------- |
-| **start.py**           | Main entry point - runs setup, update, or dev servers |
-| **PROJECT.md**         | This file - complete guide (you are here)             |
-| **README.md**          | Project overview and features                         |
-| **docker-compose.yml** | Container orchestration for deployment                |
-| **pyproject.toml**     | Python project metadata                               |
-| **package.json**       | Node.js dependencies and scripts                      |
-| **.env.example**       | Template for environment variables                    |
-
-### Scripts (`scripts/`)
-
-| File               | Purpose                                                                           |
-| ------------------ | --------------------------------------------------------------------------------- |
-| **setup.py**       | Initialize project: creates .venv, installs all dependencies, creates directories |
-| **dev.py**         | Start development servers (backend + frontend) with auto-reload                   |
-| **update-deps.py** | Update all Python and Node.js dependencies to latest versions                     |
-| **healthcheck.py** | Check if services are running properly                                            |
-| **seed_db.py**     | Populate database with sample RBI clauses and test data                           |
-
-### Backend - Core (`apps/backend/core/`)
-
-| File                    | Purpose                                                              |
-| ----------------------- | -------------------------------------------------------------------- |
-| **progress_manager.py** | Unified progress tracking for all analysis operations (CONSOLIDATED) |
-| **config.py**           | Application settings and configuration                               |
-| **runtime_config.py**   | Dynamic AI provider configuration                                    |
-| **runtime_config.json** | Persistent storage for AI provider settings                          |
-| **log_buffer.py**       | Buffer logs for streaming to frontend                                |
-
-### Backend - API Routes (`apps/backend/api/routes/`)
-
-| File             | Purpose                                          |
-| ---------------- | ------------------------------------------------ |
-| **documents.py** | Upload, process, and manage compliance documents |
-| **clauses.py**   | RBI clause management and analysis               |
-| **analysis.py**  | Run compliance analysis on documents             |
-| **reports.py**   | Generate compliance reports                      |
-| **settings.py**  | Configure AI provider (Ollama/LMStudio/Groq)     |
-| **debug.py**     | Debug utilities for development                  |
-| **dev.py**       | Dev-only endpoints (gated by ENABLE_DEV_ROUTES)  |
-
-### Backend - Database (`apps/backend/db/`)
-
-| File             | Purpose                                                        |
-| ---------------- | -------------------------------------------------------------- |
-| **models.py**    | SQLAlchemy ORM models for documents, clauses, analysis results |
-| **session.py**   | Database connection and session management                     |
-| **seed_data.py** | Sample data for testing (RBI clauses, test documents)          |
-
-### Backend - Services (`apps/backend/services/`)
-
-| File                  | Purpose                                              |
-| --------------------- | ---------------------------------------------------- |
-| **ai/analyzer.py**    | AI analysis engine (supports Ollama, LMStudio, Groq) |
-| **parsing/parser.py** | Document parsing (PDF, DOCX with OCR support)        |
-
-### Frontend - Components (`apps/frontend/src/`)
-
-| File                   | Purpose                                                    |
-| ---------------------- | ---------------------------------------------------------- |
-| **main.tsx**           | React app entry point                                      |
-| **App.tsx**            | Root component with routing                                |
-| **components/**        | Reusable UI components (buttons, cards, dialogs, etc.)     |
-| **features/**          | Feature modules (clauses, compliance, documents, sessions) |
-| **lib/api.ts**         | API client (Axios instance with interceptors)              |
-| **lib/debugLogger.ts** | Debug logging to console and UI                            |
-| **lib/utils.ts**       | Helper functions (formatting, validation, etc.)            |
-| **types/index.ts**     | TypeScript type definitions for API responses              |
-
----
-
-## 🔧 Setup Instructions
-
-### Prerequisites
-
-- **Python 3.11+** - [Download](https://www.python.org/downloads/)
-- **Node.js 18+** - [Download](https://nodejs.org/)
-- **Optional: Ollama** for local AI - [Download](https://ollama.ai)
-
-### Step 1: Initial Setup
+Use compose for containerized run:
 
 ```bash
-# Run setup (one time)
-python start.py setup
+docker compose up --build
 ```
 
-This will:
+- Frontend (nginx): `http://localhost:5000`
+- Backend: `http://localhost:8000`
 
-- ✅ Create Python virtual environment (`.venv`)
-- ✅ Install all Python dependencies from `requirements.txt`
-- ✅ Install all Node.js dependencies from `package.json`
-- ✅ Create required directories (`uploads/`, `logs/`)
-- ✅ Check for Ollama installation (optional)
-
-### Step 2: Configure AI Provider (Optional)
-
-Create `.env` file in project root:
+To stop:
 
 ```bash
-# AI Provider: ollama, lmstudio, or groq
-AI_PROVIDER=ollama
-
-# Ollama settings (local AI)
-OLLAMA_BASE_URL=http://localhost:11434
-
-# LMStudio settings (local AI)
-LMSTUDIO_BASE_URL=http://localhost:1234
-
-# Groq API (cloud AI)
-GROQ_API_KEY=your-api-key-here
-
-# Enable development endpoints
-ENABLE_DEV_ROUTES=false
+docker compose down
 ```
-
-### Step 3: Optional - Seed Database
-
-```bash
-python scripts/seed_db.py
-```
-
-This adds sample RBI clauses and test documents for development.
-
----
-
-## ▶️ How to Run
-
-### Method 1: Automatic (Recommended)
-
-```bash
-# Auto-setup if needed, update dependencies, start servers
-python start.py dev
-```
-
-### Method 2: Manual Steps
-
-```bash
-# Step 1: Setup (if first time)
-python start.py setup
-
-# Step 2: Update dependencies
-python start.py update
-
-# Step 3: Start development
-python start.py dev
-```
-
-### Access Points
-
-After starting:
 
 - **Frontend UI**: http://localhost:5000
 - **Backend API**: http://localhost:8000
