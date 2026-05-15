@@ -62,7 +62,6 @@ export function OllamaStatusBar() {
   const connected = health.ai_connected;
   const isOllama = currentProvider === "ollama";
   const isLMStudio = currentProvider === "lmstudio";
-  const isGroq = currentProvider === "groq";
 
   const getProviderUrl = () => {
     if (isOllama) {
