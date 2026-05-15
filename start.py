@@ -38,9 +38,7 @@ def run_docker(command):
 
 def run_dev_directly():
     """Run the dev script directly in the current process to handle Ctrl+C properly."""
-    import sys
-    sys.path.insert(0, os.path.join(ROOT, "scripts"))
-    from dev import main
+    from scripts.dev import main
     try:
         main()
     except KeyboardInterrupt:
@@ -56,13 +54,13 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python start.py              Start dev servers (auto-setup if needed)
-  python start.py setup        Setup/reset project
-  python start.py update       Update all dependencies
-  python start.py dev          Start development servers only
+    python start.py              Start dev servers (auto-setup if needed)
+    python start.py setup        Setup/reset project
+    python start.py update       Update all dependencies
+    python start.py dev          Start development servers only
     python start.py health       Run health checks
-    python start.py docker-up    Start containers with docker compose
-    python start.py docker-down  Stop containers
+    python start.py docker-up     Start containers with docker compose
+    python start.py docker-down   Stop containers
         """
     )
     parser.add_argument(
