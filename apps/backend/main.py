@@ -61,16 +61,34 @@ app.include_router(clauses.router)
 
 @app.get("/api/health")
 async def health_check():
-    from services.ai.analyzer import check_ai_connection, get_active_provider, get_ollama_base_url, get_lmstudio_base_url
-    ai_connected = await check_ai_connection()
+    from services.ai.analyzer import (
+        check_ai_connection,
+        check_groq_connection,
+        check_lmstudio_connection,
+        check_ollama_connection,
+        get_active_provider,
+        get_ai_model,
+        GROQ_MODEL,
+        get_ollama_base_url,
+        get_lmstudio_base_url,
+    )
+
     provider = get_active_provider()
+    ai_connected = await check_ai_connection()
+    ollama_connected = await check_ollama_connection()
+    lmstudio_connected = await check_lmstudio_connection()
+    groq_connected = await check_groq_connection()
     return {
         "status": "ok",
         "ai_provider": provider,
-        "ollama_connected": ai_connected if provider == "ollama" else False,
+        "ai_model": get_ai_model(),
+        "ai_connected": ai_connected,
+        "ollama_connected": ollama_connected,
         "ollama_url": get_ollama_base_url(),
-        "lmstudio_connected": ai_connected if provider == "lmstudio" else False,
+        "lmstudio_connected": lmstudio_connected,
         "lmstudio_url": get_lmstudio_base_url(),
+        "groq_connected": groq_connected,
+        "groq_model": GROQ_MODEL,
     }
 
 

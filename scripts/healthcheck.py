@@ -13,10 +13,11 @@ def check():
             data = json.loads(r.read())
         print(f"Backend     : {data.get('status', 'unknown').upper()}")
         print(f"AI provider : {data.get('ai_provider', 'unknown')}")
-        print(f"AI connected: {data.get('ai_connected', False)}")
         print(f"AI model    : {data.get('ai_model', 'unknown')}")
-        if data.get("ai_provider") == "ollama":
-            print(f"Ollama URL  : {data.get('ollama_url', 'unknown')}")
+        print(f"AI connected: {data.get('ai_connected', False)}")
+        print(f"Ollama      : {data.get('ollama_connected', False)} @ {data.get('ollama_url', 'unknown')}")
+        print(f"LM Studio   : {data.get('lmstudio_connected', False)} @ {data.get('lmstudio_url', 'unknown')}")
+        print(f"Groq        : {data.get('groq_connected', False)} @ {data.get('groq_model', 'unknown')}")
         return 0
     except Exception as e:
         print(f"Health check failed: {e}")
