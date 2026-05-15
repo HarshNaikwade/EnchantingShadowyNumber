@@ -2,9 +2,9 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "▶️ Start Project (All-in-One)",
+      "label": "Start Project (All-in-One)",
       "type": "shell",
-      "command": ".venv/Scripts/python.exe",
+      "command": "python",
       "args": ["start.py", "dev"],
       "isBackground": true,
       "problemMatcher": [
@@ -33,9 +33,9 @@
       }
     },
     {
-      "label": "🔧 Setup Project (First Time Only)",
+      "label": "Setup Project (First Time Only)",
       "type": "shell",
-      "command": ".venv/Scripts/python.exe",
+      "command": "python",
       "args": ["start.py", "setup"],
       "group": "build",
       "presentation": {
@@ -47,7 +47,7 @@
       "problemMatcher": []
     },
     {
-      "label": "📦 Update All Dependencies",
+      "label": "Update All Dependencies",
       "type": "shell",
       "command": ".venv/Scripts/python.exe",
       "args": ["start.py", "update"],
@@ -61,7 +61,7 @@
       "problemMatcher": []
     },
     {
-      "label": "🌱 Seed Database",
+      "label": "Seed Database",
       "type": "shell",
       "command": ".venv/Scripts/python.exe",
       "args": ["scripts/seed_db.py"],
@@ -75,7 +75,7 @@
       "problemMatcher": []
     },
     {
-      "label": "❤️ Health Check",
+      "label": "Health Check",
       "type": "shell",
       "command": ".venv/Scripts/python.exe",
       "args": ["scripts/healthcheck.py"],
@@ -133,6 +133,14 @@
         "focus": false,
         "panel": "shared"
       }
+    },
+    {
+      "type": "npm",
+      "script": "install",
+      "group": "none",
+      "problemMatcher": [],
+      "label": "npm: install",
+      "detail": "install dependencies from package"
     }
   ]
 }

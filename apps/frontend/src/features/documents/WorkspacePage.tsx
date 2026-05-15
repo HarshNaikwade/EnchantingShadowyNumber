@@ -246,65 +246,65 @@ function DocumentCard({
                   }}
                 />
               </div>
-              {editingDates && (
-                <Button
-                  size="sm"
-                  className="h-8 text-xs mt-4"
-                  onClick={() => updateDatesMutation.mutate()}
-                  disabled={updateDatesMutation.isPending}
-                >
-                  Save Dates
+           <div className="flex flex-col xs:flex-row xs:items-center gap-2 xs:gap-3 p-2 xs:p-4">
+             <div className="flex items-center gap-1 xs:gap-2 text-xs xs:text-sm font-medium text-gray-700 flex-1 min-w-0 order-2 xs:order-1">
+               <span className="text-muted-foreground text-xs xs:w-6 shrink-0">{index}.</span>
+               <FileText className="h-3 xs:h-4 w-3 xs:w-4 text-primary shrink-0" />
+               <div className="min-w-0 flex-1">
+                 <span className="font-semibold text-xs xs:text-sm">{doc.file_type}</span>
+                 <span className="text-muted-foreground text-xs"> — </span>
+                 <span className="text-gray-600 truncate text-xs xs:text-sm">
                 </Button>
               )}
             </div>
 
             {(currentStatus === "processing" || currentStatus === "queued") && (
-              <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-1.5 ml-auto">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                AI analysis in progress... This may take a few minutes.
+           <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 gap-2 xs:gap-3 text-xs">
+               <Calendar className="h-3 w-3 hidden xs:inline" />
+               <span className="text-muted-foreground font-medium text-xs">Type</span>
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-6 p-1"
+               <span className="text-muted-foreground font-medium text-xs">
                   onClick={() => {
-                    logEvent("Status refresh requested", {
+                   <Loader2 className="h-2 xs:h-3 w-2 xs:w-3 animate-spin" />
                       documentId: doc.id,
                     });
                     queryClient.invalidateQueries({
-                      queryKey: ["session", sessionId],
+               <span className="text-muted-foreground font-medium text-xs">
                     });
                   }}
                 >
-                  <RefreshCw className="h-3 w-3" />
+             <div className="flex gap-1 shrink-0 w-full xs:w-auto order-4 xs:order-4">
                 </Button>
-              </div>
-            )}
-
+                   <Button variant="outline" size="sm" className="h-8 text-xs gap-1 flex-1 xs:flex-none px-2">
+                     <Download className="h-3 xs:h-3.5 w-3 xs:w-3.5" />
+                     <span className="hidden xs:inline">Report</span>
             {liveProgress &&
-              (currentStatus === "processing" ||
-                currentStatus === "queued") && (
-                <div className="ml-auto text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded px-3 py-2 w-full">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold">AI step:</span>
+               className="text-xs h-7 px-2 w-full xs:w-auto"
+               <Button
+                 variant="ghost"
+                 size="icon"
+                 className="h-8 w-8 p-1"
                     <span className="capitalize">
                       {formatProgressStep(liveProgress.step)}
-                    </span>
-                    {liveProgress.stalled && (
-                      <span className="text-amber-700">
-                        No response received for{" "}
-                        {liveProgress.last_chunk_age ?? "?"}s
-                      </span>
-                    )}
-                  </div>
-                  {liveProgress.message && (
-                    <div className="text-xs text-muted-foreground mt-1">
+             <div className="grid grid-cols-1 xs:grid-cols-2 gap-2">
+                   <ChevronUp className="h-3 xs:h-4 w-3 xs:w-4" />
+                 ) : (
+                 <Input
+                   type="date"
+                   value={editEffective}
+                   onChange={(e) => setEditEffective(e.target.value)}
+                   className="h-7 text-xs w-full"
+                 size="icon"
+                 className="h-8 w-8 p-1 text-destructive hover:text-destructive"
                       {liveProgress.message}
                     </div>
-                  )}
-                  {liveProgress.response_preview && (
-                    <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-[11px] bg-white border border-slate-200 rounded p-2">
-                      {liveProgress.response_preview}
-                    </pre>
+                 <Input
+                   type="date"
+                   value={editCreation}
+                   onChange={(e) => setEditCreation(e.target.value)}
+                   className="h-7 text-xs w-full"
                   )}
                   {liveProgress.error && (
                     <div className="mt-2 text-xs text-destructive">
@@ -312,8 +312,8 @@ function DocumentCard({
                     </div>
                   )}
                 </div>
-              )}
-
+               size="sm"
+               className="text-xs h-7 px-2 xs:px-3"
             {currentStatus === "completed_no_ai" && (
               <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-1.5 ml-auto">
                 <AlertCircle className="h-3.5 w-3.5" />
@@ -325,15 +325,15 @@ function DocumentCard({
                   disabled={rerunMutation.isPending}
                   onClick={() => rerunMutation.mutate()}
                 >
-                  {rerunMutation.isPending ? (
+                   <Loader2 className="h-2 xs:h-3 w-2 xs:w-3 mr-1 animate-spin" />
                     <Loader2 className="h-3 w-3 animate-spin" />
                   ) : (
                     <>
                       <RefreshCw className="h-3 w-3 mr-1" />
                       Re-run Analysis
                     </>
-                  )}
-                </Button>
+               <div className="p-2 xs:p-3 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700 flex flex-col xs:flex-row xs:items-center gap-1 xs:gap-2">
+                 <AlertCircle className="h-3 xs:h-4 w-3 xs:w-4 shrink-0" />
               </div>
             )}
 
@@ -345,13 +345,13 @@ function DocumentCard({
                   variant="outline"
                   size="sm"
                   className="h-6 px-2 text-xs ml-1"
-                  disabled={rerunMutation.isPending}
-                  onClick={() => rerunMutation.mutate()}
+                 size="sm"
+                 className="text-xs h-7 gap-1 px-2 w-full"
                 >
                   {rerunMutation.isPending ? (
                     <Loader2 className="h-3 w-3 animate-spin" />
                   ) : (
-                    <>
+                   <Loader2 className="h-2 xs:h-3 w-2 xs:w-3 animate-spin" />
                       <RefreshCw className="h-3 w-3 mr-1" />
                       Re-run Analysis
                     </>
@@ -421,7 +421,7 @@ export default function WorkspacePage() {
     try {
       logEvent("Upload started", { sessionId, fileName: selectedFile.name });
       await apiClient.uploadDocument(sessionId, selectedFile, docType);
-      setSelectedFile(null);
+     <header className="bg-white border-b px-2 xs:px-4 sm:px-6 py-2 xs:py-3 sm:py-4">
       logEvent("Upload completed", { sessionId, fileType: docType });
       queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
     } catch (err: any) {
@@ -429,44 +429,44 @@ export default function WorkspacePage() {
         err.response?.data?.detail || "Upload failed. Please try again.",
       );
       logError("Upload failed", err);
-    } finally {
+         <h1 className="text-lg xs:text-2xl sm:text-3xl font-bold text-gray-900 truncate">Session — {session.name}</h1>
       setUploading(false);
-    }
+            Created on {format(new Date(session.created_at), "PPp")}
   };
 
   const reportUrl = apiClient.getReportUrl(sessionId);
 
-  if (isLoading) {
+     <div className="flex-1 px-2 xs:px-4 sm:px-6 py-4 xs:py-6 space-y-6 xs:space-y-8 max-w-7xl mx-auto w-full">
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
+       <div {...getRootProps()} className={cn(
+         "border-2 border-dashed rounded-lg p-4 xs:p-6 sm:p-8 text-center cursor-pointer transition-all",
     );
   }
 
   if (!session) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen gap-4">
-        <p className="text-muted-foreground">Session not found</p>
+             <Loader2 className="h-6 xs:h-8 w-6 xs:w-8 mx-auto mb-2 xs:mb-3 animate-spin text-primary" />
+             <p className="text-xs xs:text-sm font-medium">Uploading {uploadMutation.variables?.files.length} file(s)...</p>
         <Button onClick={() => navigate("/")}>Go to Dashboard</Button>
       </div>
     );
-  }
-
+             <Upload className="h-6 xs:h-8 w-6 xs:w-8 mx-auto mb-2 xs:mb-3 text-primary" />
+             <p className="text-xs xs:text-sm font-medium">Drop files here...</p>
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-white shadow-sm sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
-          <div className="flex items-center gap-3">
-            <Button
+             <Upload className="h-6 xs:h-8 w-6 xs:w-8 mx-auto mb-2 xs:mb-3 text-gray-400" />
+             <p className="text-xs xs:text-sm font-medium">Drag & drop documents here, or click to select</p>
+             <p className="text-xs text-muted-foreground mt-0.5 xs:mt-1">Supported: PDF, TXT, DOCX</p>
               variant="ghost"
               size="icon"
               onClick={() => navigate("/")}
               className="shrink-0"
             >
               <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <div className="flex items-center gap-2">
+           <h2 className="text-lg xs:text-xl font-semibold text-gray-800 flex items-center gap-2">
+             <FileText className="h-4 xs:h-5 w-4 xs:w-5" />
               <Shield className="h-5 w-5 text-primary" />
               <div>
                 <h1 className="text-lg font-bold text-gray-900 leading-none">

@@ -79,52 +79,55 @@ export default function DevToolsPanel() {
   };
 
   return (
-    <div className="fixed bottom-4 left-4 z-50">
+    <div className="fixed bottom-2 left-2 sm:bottom-4 sm:left-4 z-50">
       <Button
         variant="outline"
         size="sm"
-        className="shadow-lg gap-1.5 bg-white"
+        className="shadow-lg gap-1.5 bg-white text-xs sm:text-sm"
         onClick={() => setOpen(v => !v)}
       >
-        <Bug className="h-3.5 w-3.5" />
+        <Bug className="h-3 sm:h-3.5 w-3 sm:w-3.5" />
         Dev Tools
       </Button>
 
       {open && (
-        <div
-          className="fixed inset-4 bg-white border border-border rounded-xl shadow-2xl z-50 flex flex-col"
-          style={{ top: "3rem", bottom: "3rem" }}
-        >
+         <div
+           className="fixed inset-2 sm:inset-4 bg-white border border-border rounded-lg sm:rounded-xl shadow-2xl z-50 flex flex-col"
+           style={{ top: "3rem", bottom: "3rem" }}
+         >
           {/* Header */}
           <div className="flex items-center justify-between border-b px-4 py-3 shrink-0">
+                       <div className="flex items-center justify-between border-b px-2 sm:px-4 py-2 sm:py-3 shrink-0 gap-2">
             <div className="flex items-center gap-2">
-              <Bug className="h-4 w-4 text-primary" />
-              <span className="font-semibold text-sm">Dev Tools — Parser &amp; AI Inspector</span>
+               <Bug className="h-3 sm:h-4 w-3 sm:w-4 text-primary shrink-0" />
+               <span className="font-semibold text-xs sm:text-sm truncate">Dev Tools</span>
               <Badge variant="secondary" className="text-xs">DEV ONLY</Badge>
             </div>
-            <button
-              onClick={() => setOpen(false)}
-              className="p-1 rounded hover:bg-gray-100 transition-colors"
-            >
-              <X className="h-4 w-4" />
-            </button>
+             <button
+               onClick={() => setOpen(false)}
+               className="p-1 rounded hover:bg-gray-100 transition-colors shrink-0"
+             >
+               <X className="h-3 sm:h-4 w-3 sm:w-4" />
+             </button>
           </div>
 
           {/* Controls row */}
           <div className="flex items-center gap-3 border-b px-4 py-2.5 shrink-0 bg-gray-50">
+                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 border-b px-2 sm:px-4 py-2 sm:py-2.5 shrink-0 bg-gray-50 overflow-x-auto">
             {/* Document debug */}
             <span className="text-xs font-medium text-muted-foreground shrink-0">Document ID:</span>
             <Input
-              className="h-7 w-28 text-xs font-mono"
+               className="h-7 w-full sm:w-28 text-xs font-mono"
               placeholder="e.g. 1"
               value={docIdInput}
               onChange={e => setDocIdInput(e.target.value)}
               onKeyDown={e => e.key === "Enter" && fetch()}
             />
             <Button size="sm" className="h-7 text-xs px-3" onClick={fetch} disabled={parsedQuery.isFetching}>
+                           <Button size="sm" className="h-7 text-xs px-2 sm:px-3 whitespace-nowrap" onClick={fetch} disabled={parsedQuery.isFetching}>
               {parsedQuery.isFetching
-                ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Loading…</>
-                : "Debug Full Parsed Document"}
+                 ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /><span className="hidden sm:inline">Loading…</span></>
+                 : <span className="hidden sm:inline">Debug Full Parsed Document</span> || "Debug Doc"}
             </Button>
 
             <div className="h-4 w-px bg-border mx-1" />
@@ -132,8 +135,8 @@ export default function DevToolsPanel() {
             {/* RBI AI test */}
             <Button
               size="sm"
-              variant="outline"
-              className="h-7 text-xs px-3"
+               variant="outline"
+               className="h-7 text-xs px-2 sm:px-3 whitespace-nowrap"
               onClick={() => {
                 console.log("[DevTools] Triggering RBI AI analysis test…");
                 rbiMutation.mutate();
@@ -141,8 +144,8 @@ export default function DevToolsPanel() {
               disabled={rbiMutation.isPending}
             >
               {rbiMutation.isPending
-                ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Running…</>
-                : "Test RBI AI Analysis"}
+                 ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /><span className="hidden sm:inline">Running…</span></>
+                 : <span className="hidden sm:inline">Test RBI AI Analysis</span> || "Test AI"}
             </Button>
 
             {rbiMutation.isSuccess && (

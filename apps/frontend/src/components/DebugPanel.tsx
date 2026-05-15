@@ -64,7 +64,7 @@ export default function DebugPanel() {
   if (!import.meta.env.DEV) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-50">
+    <div className="fixed bottom-2 right-2 sm:bottom-4 sm:right-4 z-50">
       <Button
         variant={hasErrors ? "destructive" : "outline"}
         className="shadow-lg"
@@ -74,20 +74,22 @@ export default function DebugPanel() {
       </Button>
 
       {open && (
-        <Card className="mt-3 w-[420px] max-h-[420px] overflow-hidden shadow-xl border">
-          <div className="flex items-center justify-between border-b px-3 py-2">
-            <div className="flex items-center gap-2 text-xs font-semibold">
+         <Card className="mt-2 sm:mt-3 w-[95vw] sm:w-[420px] max-h-[50vh] sm:max-h-[420px] overflow-hidden shadow-xl border fixed bottom-12 right-2 sm:static">
+           <div className="flex items-center justify-between border-b px-2 sm:px-3 py-1 sm:py-2">
+             <div className="flex items-center gap-1 sm:gap-2 text-xs font-semibold flex-1 min-w-0">
               <button
                 className={cn(
                   "px-2 py-1 rounded",
+                                   "text-xs"
                   activeTab === "frontend"
                     ? "bg-primary text-white"
                     : "bg-muted",
                 )}
                 onClick={() => setActiveTab("frontend")}
               >
-                Frontend Console
+                 Frontend
               </button>
+                               "text-xs"
               <button
                 className={cn(
                   "px-2 py-1 rounded",
@@ -97,12 +99,12 @@ export default function DebugPanel() {
                 )}
                 onClick={() => setActiveTab("backend")}
               >
-                Backend Logs
+                 Backend
               </button>
             </div>
           </div>
 
-          <div className="max-h-[340px] overflow-auto text-xs p-3 space-y-2">
+           <div className="max-h-[calc(50vh-60px)] sm:max-h-[340px] overflow-auto text-xs p-2 sm:p-3 space-y-2">
             {activeTab === "frontend" &&
               (frontendLogs.length === 0 ? (
                 <div className="text-muted-foreground">

@@ -216,11 +216,11 @@ export function ComplianceTables({
       </section>
 
       <section>
-        <div className="flex items-center justify-between mb-3">
-          <h4 className="font-semibold text-sm text-gray-800">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+          <h4 className="font-semibold text-sm text-gray-800 order-1">
             Table 2 — Agreement Clause Analysis
           </h4>
-          <div className="relative w-64">
+          <div className="relative w-full sm:w-64 order-2 sm:order-3">
             <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
             <Input
               className="pl-8 h-8 text-xs"
@@ -230,39 +230,39 @@ export function ComplianceTables({
             />
           </div>
         </div>
-        <div className="rounded-md border overflow-hidden">
+        <div className="rounded-md border overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow className="bg-slate-800 hover:bg-slate-800">
                 <TableHead className="text-white font-semibold w-12">
                   #
                 </TableHead>
-                <TableHead className="text-white font-semibold">
+                <TableHead className="text-white font-semibold min-w-[200px] sm:min-w-0">
                   RBI Clause Reference
                 </TableHead>
-                <TableHead className="text-white font-semibold">
+                <TableHead className="text-white font-semibold min-w-[150px] sm:min-w-0">
                   AI Understanding of Agreement
                 </TableHead>
-              </TableRow>
+                <TableHead className="text-white font-semibold min-w-[150px] sm:min-w-0">
             </TableHeader>
             <TableBody>
               {results.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={3}
+                <TableCell className="text-xs max-w-xs sm:max-w-none px-2">
                     className="text-center text-muted-foreground py-6 text-sm"
                   >
                     {results.length === 0
                       ? "AI analysis in progress or not yet started..."
                       : "No results found"}
                   </TableCell>
-                </TableRow>
+                    {clause.clause_text.substring(0, 150)}...
               ) : (
                 filteredResults2.map((result, i) => (
-                  <TableRow
+                <TableCell className="text-xs text-gray-600 max-w-xs sm:max-w-none px-2">
                     key={result.id}
                     className={`${i % 2 === 0 ? "bg-white" : "bg-slate-50"} cursor-pointer`}
-                    onClick={() => setSelectedRbiId(result.rbi_clause_id)}
+                <TableCell className="text-xs text-gray-700 max-w-xs sm:max-w-none px-2">
                   >
                     <TableCell className="text-center font-medium text-muted-foreground">
                       {i + 1}

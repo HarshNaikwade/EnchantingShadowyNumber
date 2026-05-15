@@ -13,7 +13,7 @@ if env_path.exists():
 
 from db.session import engine, Base, SessionLocal
 from db.models import RBIClause
-from api.routes import analysis, documents, reports, clauses, settings, debug, dev
+from api.routes import analysis, documents, reports, clauses
 from core.log_buffer import buffer_handler
 from core.config import UPLOAD_DIR
 
@@ -28,19 +28,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 async def lifespan(app: FastAPI):
     logger.info("Starting up compliance checker API...")
     Base.metadata.create_all(bind=engine)
-
-    db = SessionLocal()
-    try:
-        count = db.query(RBIClause).count()
-        if count == 0:
-            from db.seed_data import seed_database
-            seed_database()
-            logger.info("Database seeded with default RBI clauses.")
-        else:
-            logger.info(f"Database has {count} RBI clauses.")
-    finally:
-        db.close()
-
+    
     yield
     logger.info("Shutting down...")
 
@@ -69,21 +57,16 @@ app.include_router(analysis.router)
 app.include_router(documents.router)
 app.include_router(reports.router)
 app.include_router(clauses.router)
-app.include_router(settings.router)
-app.include_router(debug.router)
-app.include_router(dev.router)
 
 
 @app.get("/api/health")
 async def health_check():
-    from services.ai.analyzer import check_ai_connection, get_active_provider, get_ai_model, get_ollama_base_url, get_lmstudio_base_url
+    from services.ai.analyzer import check_ai_connection, get_active_provider, get_ollama_base_url, get_lmstudio_base_url
     ai_connected = await check_ai_connection()
     provider = get_active_provider()
     return {
         "status": "ok",
         "ai_provider": provider,
-        "ai_connected": ai_connected,
-        "ai_model": get_ai_model(),
         "ollama_connected": ai_connected if provider == "ollama" else False,
         "ollama_url": get_ollama_base_url(),
         "lmstudio_connected": ai_connected if provider == "lmstudio" else False,

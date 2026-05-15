@@ -248,44 +248,44 @@ export default function RBIClausesSettings() {
               <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center">
                 <Shield className="h-5 w-5 text-white" />
               </div>
-              <div>
+              <header className="bg-white border-b px-2 xs:px-4 sm:px-6 py-2 xs:py-3 sm:py-4">
                 <h1 className="text-xl font-bold text-gray-900">
-                  RBI Compliance Checker
+                  <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="gap-1 xs:gap-2 px-1 xs:px-2">
                 </h1>
                 <p className="text-xs text-muted-foreground">
                   Global RBI Clause Settings
                 </p>
               </div>
-            </div>
+                  <h1 className="text-lg xs:text-2xl sm:text-3xl font-bold text-gray-900 truncate">
             <div className="flex items-center gap-3">
               <OllamaStatusBar />
               <Button variant="outline" onClick={() => navigate("/")}>
-                <ArrowLeft className="h-4 w-4 mr-2" />
+                  <p className="text-xs xs:text-sm text-muted-foreground">
                 Back to Dashboard
               </Button>
             </div>
           </div>
         </div>
       </header>
-
+              <div className="flex-1 px-2 xs:px-4 sm:px-6 py-4 xs:py-6 space-y-6 xs:space-y-8 max-w-7xl mx-auto w-full">
       <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">RBI Clauses</h2>
-            <p className="text-muted-foreground mt-1">
-              Define the global set of RBI clauses used across all compliance
-              analyses.
+                  <CardHeader className="border-b px-3 xs:px-6 py-3 xs:py-4">
+                    <CardTitle className="flex items-center gap-2 text-base xs:text-lg">
+                      <Plus className="h-4 xs:h-5 w-4 xs:w-5" />
             </p>
           </div>
           <div className="flex items-center gap-2">
             <Button
-              variant="outline"
+                  <CardContent className="p-2 xs:p-6 space-y-3">
               onClick={() => analyzeMutation.mutate(false)}
               disabled={analyzeMutation.isPending || isAnalyzing}
             >
               {(analyzeMutation.isPending || isAnalyzing) && (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              )}
+                        <SelectTrigger id="category" className="h-8 text-xs w-full" />
               Analyze Clauses
             </Button>
             <Button
@@ -293,34 +293,34 @@ export default function RBIClausesSettings() {
               onClick={() => analyzeMutation.mutate(true)}
               disabled={analyzeMutation.isPending || isAnalyzing}
             >
-              {(analyzeMutation.isPending || isAnalyzing) && (
+                    <div className="space-y-1">
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               )}
               Force Re-Analyze
             </Button>
             <Button onClick={openCreate}>
-              <Plus className="h-4 w-4 mr-2" />
+                        className="w-full border border-input rounded px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary resize-none min-h-20"
               Add Clause
             </Button>
           </div>
         </div>
 
         {isLoading ? (
-          <div className="flex items-center justify-center py-16">
+                    <div className="space-y-1">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         ) : clauses.length === 0 ? (
           <div className="text-center py-16 border-2 border-dashed border-border rounded-xl">
             <Shield className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                        className="w-full border border-input rounded px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary resize-none min-h-20"
               No RBI Clauses Defined
             </h3>
             <p className="text-muted-foreground mb-4 max-w-sm mx-auto">
               Add your first RBI clause to use it in compliance analysis
               sessions.
             </p>
-            <Button onClick={openCreate}>
-              <Plus className="h-4 w-4 mr-2" />
+                    <Button className="w-full gap-1 xs:gap-2 h-8 text-xs bg-primary text-white hover:bg-primary/90" onClick={addClause}>
+                      <Plus className="h-3 xs:h-3.5 w-3 xs:w-3.5" />
               Add First Clause
             </Button>
           </div>
@@ -328,40 +328,40 @@ export default function RBIClausesSettings() {
           <div className="space-y-3">
             {clauses.map((clause) => {
               const analysisEvent = analysisProgress.get(clause.id);
-              const liveUnderstanding = analysisResults.get(clause.id);
-              const visibleUnderstanding =
+                  <h2 className="text-lg xs:text-xl font-semibold text-gray-800 flex items-center gap-2">
+                    <CheckCircle2 className="h-4 xs:h-5 w-4 xs:w-5 text-primary" />
                 liveUnderstanding ??
                 (isForceAnalyzing ? null : clause.ai_understanding);
               const isCompletedBySse =
                 analysisEvent?.type === "clause_completed";
-              const isDone = Boolean(visibleUnderstanding) || isCompletedBySse;
-              const isRunning =
-                isAnalyzing && analysisEvent && !isCompletedBySse;
-              const isQueued = isAnalyzing && !analysisEvent && !isDone;
+                      <Card key={clause.id} className="overflow-hidden">
+                        <div className="flex flex-col xs:flex-row xs:items-start xs:justify-between gap-2 p-2 xs:p-4">
+                          <div className="space-y-1 xs:space-y-2 flex-1 min-w-0 order-1">
+                            <Badge variant="outline" className="text-xs w-fit">
 
               return (
-                <Card key={clause.id} className="group">
+                            <p className="text-xs font-medium leading-snug line-clamp-2 xs:line-clamp-none">
                   <CardHeader className="pb-2">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                              <p className="text-xs text-muted-foreground italic leading-snug line-clamp-2 xs:line-clamp-none">
                           {clause.category && (
                             <Badge
                               variant="secondary"
                               className="text-xs shrink-0"
-                            >
+                          <div className="flex gap-1 shrink-0 w-full xs:w-auto order-2 xs:order-2">
                               {clause.category}
                             </Badge>
-                          )}
-                          {isRunning && (
+                              size="icon"
+                              className="h-8 w-8 p-1 flex-1 xs:flex-none"
                             <Badge
                               variant="review"
                               className="text-xs shrink-0 flex items-center gap-1"
                             >
                               <Loader2 className="h-3 w-3 animate-spin" />
                               Analysing
-                            </Badge>
-                          )}
+                              size="icon"
+                              className="h-8 w-8 p-1 flex-1 xs:flex-none text-destructive hover:text-destructive"
                           {isDone && (
                             <Badge
                               variant="success"

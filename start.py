@@ -15,12 +15,24 @@ def venv_python():
     return os.path.join(VENV_DIR, "bin", "python")
 
 
-def run_script(script_name):
-    """Run a Python script in the scripts directory using venv."""
+def run_script(script_name, use_system_python=False):
+    """Run a Python script in the scripts directory using venv (or system Python if specified)."""
     script_path = os.path.join(ROOT, "scripts", script_name)
-    python_exe = venv_python()
+    python_exe = sys.executable if use_system_python else venv_python()
     result = subprocess.run([python_exe, script_path], cwd=ROOT)
     return result.returncode
+
+
+def run_dev_directly():
+    """Run the dev script directly in the current process to handle Ctrl+C properly."""
+    import sys
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    from dev import main
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass  # Expected when user presses Ctrl+C
+    return 0
 
 
 def main():
@@ -49,18 +61,13 @@ Examples:
 
     if args.command == "setup":
         print("\nRunning project setup...")
-        return run_script("setup.py")
+        return run_script("setup.py", use_system_python=True)
     elif args.command == "update":
         print("\nUpdating dependencies...")
         return run_script("update-deps.py")
     else:  # dev
         print("\nStarting development servers...")
-        return run_script("dev.py")
-
-
-if __name__ == "__main__":
-    exit_code = main()
-    sys.exit(exit_code)
+        return run_dev_directly()
 
 
 if __name__ == "__main__":

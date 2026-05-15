@@ -89,43 +89,55 @@ export default function Dashboard() {
       <header className="border-b bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center">
-                <Shield className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">
-                  RBI Compliance Checker
-                </h1>
-                <p className="text-xs text-muted-foreground">
-                  Local Agreement Analysis System
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <OllamaStatusBar />
-              <Button
-                variant="outline"
-                onClick={() => navigate("/settings/clauses")}
-              >
-                <Settings2 className="h-4 w-4 mr-2" />
-                Manage Clauses
-              </Button>
-              <Button onClick={() => setShowCreate(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                New Analysis
-              </Button>
-            </div>
+             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 flex-1">
+               <div className="flex items-center gap-2 sm:gap-3">
+                 <div className="h-8 sm:h-9 w-8 sm:w-9 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
+                   <Shield className="h-4 sm:h-5 w-4 sm:h-5 text-white" />
+                 </div>
+                 <div className="min-w-0">
+                   <h1 className="text-base sm:text-lg md:text-xl font-bold text-gray-900 truncate">
+                     RBI Compliance Checker
+                   </h1>
+                   <p className="text-xs text-muted-foreground hidden sm:block">
+                     Local Agreement Analysis System
+                   </p>
+                 </div>
+               </div>
+               <div className="flex flex-col xs:flex-row items-stretch xs:items-center gap-2 xs:gap-3 w-full sm:w-auto">
+                 <div className="flex-1 xs:flex-none">
+                   <OllamaStatusBar />
+                 </div>
+                 <div className="flex gap-2 xs:gap-3">
+                   <Button
+                     variant="outline"
+                     onClick={() => navigate("/settings/clauses")}
+                     className="flex-1 xs:flex-none text-xs sm:text-sm"
+                     size="sm"
+                   >
+                     <Settings2 className="h-3 sm:h-4 w-3 sm:w-4" />
+                     <span className="hidden sm:inline ml-2">Manage Clauses</span>
+                   </Button>
+                   <Button
+                     onClick={() => setShowCreate(true)}
+                     className="flex-1 xs:flex-none text-xs sm:text-sm"
+                     size="sm"
+                   >
+                     <Plus className="h-3 sm:h-4 w-3 sm:w-4" />
+                     <span className="hidden xs:inline ml-2">New</span>
+                     <span className="xs:hidden">+</span>
+                   </Button>
+                 </div>
+               </div>
           </div>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold text-gray-900">
+         <div className="mb-4 sm:mb-6">
+           <h2 className="text-xl sm:text-2xl font-bold text-gray-900">
             Analysis Sessions
           </h2>
-          <p className="text-muted-foreground mt-1">
+           <p className="text-xs sm:text-sm text-muted-foreground mt-1">
             Upload legal agreements and analyze them against RBI compliance
             standards.
           </p>
