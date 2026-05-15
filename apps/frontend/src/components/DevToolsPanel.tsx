@@ -127,7 +127,7 @@ export default function DevToolsPanel() {
                            <Button size="sm" className="h-7 text-xs px-2 sm:px-3 whitespace-nowrap" onClick={fetch} disabled={parsedQuery.isFetching}>
               {parsedQuery.isFetching
                  ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /><span className="hidden sm:inline">Loading…</span></>
-                 : <span className="hidden sm:inline">Debug Full Parsed Document</span> || "Debug Doc"}
+                              : <span className="hidden sm:inline">Debug Full Parsed Document</span>}
             </Button>
 
             <div className="h-4 w-px bg-border mx-1" />
@@ -145,7 +145,7 @@ export default function DevToolsPanel() {
             >
               {rbiMutation.isPending
                  ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /><span className="hidden sm:inline">Running…</span></>
-                 : <span className="hidden sm:inline">Test RBI AI Analysis</span> || "Test AI"}
+                : <span className="hidden sm:inline">Test RBI AI Analysis</span>}
             </Button>
 
             {rbiMutation.isSuccess && (

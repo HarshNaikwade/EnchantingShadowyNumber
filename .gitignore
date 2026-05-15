@@ -1,11 +1,24 @@
 node_modules/
-backend/uploads/
-backend/compliance_checker.db
-backend/__pycache__/
-*.pyc
-*.pyo
 dist/
 .DS_Store
 *.log
-.venv
+.venv/
 .env
+__pycache__/
+*.pyc
+*.pyo
+package-lock.json
+
+
+# Python generated files
+**/__pycache__/
+**/*.py[cod]
+
+# Project data and generated artifacts
+**/compliance_checker.db
+apps/backend/uploads/*
+!apps/backend/uploads/.gitkeep
+uploads/*
+!uploads/.gitkeep
+logs/*
+!logs/.gitkeep
