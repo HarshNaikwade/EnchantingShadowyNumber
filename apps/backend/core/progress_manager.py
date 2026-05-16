@@ -3,6 +3,7 @@ Unified progress tracking system for document and clause analysis.
 Consolidates functionality from previous progress tracking modules.
 """
 import json
+import re
 import queue as queue_module
 import threading
 from dataclasses import dataclass, asdict
@@ -20,7 +21,7 @@ _document_progress: dict = {}
 @dataclass
 class AnalysisEvent:
     """Event sent to clients during analysis."""
-    type: str  # "started", "clause_progress", "clause_completed", "completed", "error", "doc_update"
+    type: str  # "queued", "started", "clause_progress", "clause_completed", "completed", "error", "doc_update"
     clause_id: Optional[int] = None
     clause_number: Optional[int] = None
     total_clauses: Optional[int] = None
@@ -55,14 +56,28 @@ def emit_started(total_clauses: int) -> None:
     ))
 
 
-def emit_clause_progress(clause_id: int, clause_number: int, total_clauses: int, message: str) -> None:
-    """Emit clause analysis progress event."""
+def emit_queued(total_clauses: Optional[int] = None) -> None:
+    """Emit analysis queued event."""
+    emit_event(AnalysisEvent(
+        type="queued",
+        total_clauses=total_clauses,
+        message="Analysis queued"
+    ))
+
+
+def emit_clause_progress(clause_id: int, clause_number: int, total_clauses: int, message: str, understanding: Optional[str] = None) -> None:
+    """Emit clause analysis progress event.
+
+    `understanding` may contain a partial or cumulative AI response to stream
+    live updates to clients while the model is generating output.
+    """
     emit_event(AnalysisEvent(
         type="clause_progress",
         clause_id=clause_id,
         clause_number=clause_number,
         total_clauses=total_clauses,
-        message=message
+        message=message,
+        understanding=understanding,
     ))
 
 
@@ -137,15 +152,54 @@ def _now() -> str:
     return datetime.utcnow().isoformat() + "Z"
 
 
-def start_document(document_id: int, step: str, message: str = "") -> None:
+def start_document(
+    document_id: int,
+    step: str,
+    message: str = "",
+    status: str = "processing",
+) -> None:
     """Start tracking document analysis progress."""
     with _lock:
         _document_progress[document_id] = DocumentProgressState(
             document_id=document_id,
-            status="processing",
+            status=status,
             step=step,
             message=message,
         )
+        _emit_document_event(document_id)
+
+
+def clean_live_ai_text(text: str) -> str:
+    """Turn streamed JSON-ish model output into readable live text."""
+    if not text:
+        return ""
+
+    cleaned = text.replace("```json", "").replace("```", "")
+
+    key_match = re.search(
+        r'["\'](?:ai_understanding|ai_understanding_agreement|notes|simplified_meaning)["\']\s*:\s*',
+        cleaned,
+    )
+    if key_match:
+        cleaned = cleaned[key_match.end():]
+
+    cleaned = cleaned.lstrip()
+    if cleaned.startswith('"') or cleaned.startswith("'"):
+        cleaned = cleaned[1:]
+
+    cleaned = (
+        cleaned.replace("\\r\\n", "\n")
+        .replace("\\n", "\n")
+        .replace("\\r", "\n")
+        .replace("\\t", " ")
+        .replace('\\"', '"')
+        .replace("\\/", "/")
+    )
+    cleaned = re.sub(r'"\s*,\s*["\'][^"\']+["\']\s*:[\s\S]*$', "", cleaned)
+    cleaned = re.sub(r'"\s*[,}]\s*$', "", cleaned)
+    cleaned = re.sub(r"\s*}\s*$", "", cleaned)
+    cleaned = re.sub(r"\s*,\s*$", "", cleaned)
+    return cleaned.strip()
 
 
 def update_document(
@@ -159,7 +213,9 @@ def update_document(
         state = _document_progress.get(document_id)
         if not state:
             return
-        if step is not None:
+        if step is not None and step != state.step:
+            state.response_preview = ""
+            state.last_chunk_at = None
             state.step = step
         if message is not None:
             state.message = message
@@ -178,7 +234,10 @@ def append_document_chunk(document_id: int, chunk: str) -> None:
         state = _document_progress.get(document_id)
         if not state:
             return
-        state.response_preview = (state.response_preview + chunk)[-MAX_RESPONSE_CHARS:]
+        raw_preview = (state.response_preview + chunk)[-MAX_RESPONSE_CHARS:]
+        state.response_preview = clean_live_ai_text(raw_preview)[
+            -MAX_RESPONSE_CHARS:
+        ]
         state.last_chunk_at = _now()
         state.updated_at = _now()
         _emit_document_event(document_id)

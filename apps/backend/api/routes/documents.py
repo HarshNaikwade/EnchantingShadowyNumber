@@ -3,7 +3,8 @@ import uuid
 import logging
 import asyncio
 import json
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
+import threading
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import Optional, AsyncGenerator
@@ -56,13 +57,16 @@ async def _run_ai_analysis_async(document_id: int, db_url: str):
 
     try:
         logger.info("Starting AI analysis for document %s", document_id)
-        start_document(document_id, "starting", "Initializing analysis")
+        start_document(
+            document_id,
+            "queued",
+            "Waiting in queue",
+            status="queued",
+        )
         doc = db.query(Document).filter(Document.id == document_id).first()
         if not doc:
             return
-
-        doc.processing_status = "processing"
-        db.commit()
+        await asyncio.sleep(1.5)
 
         def _set_doc_status(status: str, session_status: str = None):
             doc.processing_status = status
@@ -103,6 +107,7 @@ async def _run_ai_analysis_async(document_id: int, db_url: str):
                 set_document_error(document_id, "No Ollama models available", status="completed_no_ai")
                 return
 
+        _set_doc_status("processing", "processing")
         update_document(document_id, "analyzing", "Analyzing RBI clauses", status="processing")
         for rbi_clause in rbi_clauses:
             if not rbi_clause.ai_understanding:
@@ -234,9 +239,18 @@ def run_ai_analysis(document_id: int, db_url: str):
         loop.create_task(_run_ai_analysis_async(document_id, db_url))
 
 
+def start_ai_analysis_thread(document_id: int, db_url: str) -> None:
+    """Start AI analysis outside Starlette response background handling."""
+    thread = threading.Thread(
+        target=run_ai_analysis,
+        args=(document_id, db_url),
+        daemon=True,
+    )
+    thread.start()
+
+
 @router.post("/upload")
 async def upload_document(
-    background_tasks: BackgroundTasks,
     session_id: int = Form(...),
     file_type: str = Form(...),
     effective_date: Optional[str] = Form(None),
@@ -295,11 +309,17 @@ async def upload_document(
     session.status = "processing"
     db.commit()
     db.refresh(doc)
+    start_document(
+        doc.id,
+        "queued",
+        "Waiting in queue",
+        status="queued",
+    )
 
     logger.info("Uploaded document %s for session %s (%s)", doc.id, session_id, doc.original_filename)
 
     from db.session import DATABASE_URL
-    background_tasks.add_task(run_ai_analysis, doc.id, DATABASE_URL)
+    start_ai_analysis_thread(doc.id, DATABASE_URL)
 
     return {
         "document_id": doc.id,
@@ -381,7 +401,6 @@ async def stream_document_progress(document_id: int):
 @router.post("/{document_id}/rerun")
 def rerun_analysis(
     document_id: int,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     doc = db.query(Document).filter(Document.id == document_id).first()
@@ -395,11 +414,17 @@ def rerun_analysis(
     if session:
         session.status = "processing"
     db.commit()
+    start_document(
+        doc.id,
+        "queued",
+        "Waiting in queue",
+        status="queued",
+    )
 
     logger.info("Re-queued AI analysis for document %s", doc.id)
 
     from db.session import DATABASE_URL
-    background_tasks.add_task(run_ai_analysis, doc.id, DATABASE_URL)
+    start_ai_analysis_thread(doc.id, DATABASE_URL)
 
     return {"message": "AI analysis re-queued", "document_id": doc.id}
 

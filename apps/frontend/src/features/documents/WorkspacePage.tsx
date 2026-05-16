@@ -58,12 +58,51 @@ const statusBadge: Record<string, BadgeVariant> = {
   completed_no_ai: "review",
 };
 
+const statusLabel: Record<string, string> = {
+  completed: "Completed",
+  processing: "Processing",
+  queued: "In Queue",
+  pending: "Pending",
+  failed: "Failed",
+  completed_no_ai: "Completed - No AI",
+};
+
 function safeFormatDate(dateInput: string): string {
   try {
     return format(new Date(dateInput), "PPp");
   } catch {
     return dateInput;
   }
+}
+
+function formatLiveAiPreview(preview: string): string {
+  let text = preview
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\n")
+    .replace(/\\t/g, " ")
+    .replace(/\\"/g, '"')
+    .replace(/\\\//g, "/")
+    .trim();
+
+  const keyMatch = text.match(
+    /["'](?:ai_understanding|ai_understanding_agreement|notes|simplified_meaning)["']\s*:\s*/i,
+  );
+  if (keyMatch?.index !== undefined) {
+    text = text.slice(keyMatch.index + keyMatch[0].length).trimStart();
+  }
+
+  text = text
+    .replace(/^["']/, "")
+    .replace(/"\s*,\s*["'][^"']+["']\s*:[\s\S]*$/g, "")
+    .replace(/"\s*[,}]\s*$/g, "")
+    .replace(/\s*}\s*$/g, "")
+    .replace(/\s*,\s*$/g, "")
+    .trim();
+
+  return text;
 }
 
 function DocumentCard({
@@ -92,11 +131,8 @@ function DocumentCard({
     refetchInterval: 2000,
   });
 
-  const liveStatus = progress?.done
-    ? progress?.error
-      ? "failed"
-      : doc.processing_status
-    : doc.processing_status;
+  const liveStatus = progress?.status ?? doc.processing_status;
+  const liveAiPreview = formatLiveAiPreview(progress?.response_preview ?? "");
 
   const deleteMutation = useMutation({
     mutationFn: () => apiClient.deleteDocument(doc.id),
@@ -157,14 +193,19 @@ function DocumentCard({
           Effective: {doc.effective_date || "NA"}
         </div>
 
-        <Badge variant={statusBadge[liveStatus] ?? "secondary"}>
+        <Badge
+          variant={statusBadge[liveStatus] ?? "secondary"}
+          className="whitespace-nowrap"
+        >
           {liveStatus === "processing" || liveStatus === "queued" ? (
             <span className="flex items-center gap-1">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              {liveStatus}
+              {liveStatus === "processing" && (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              )}
+              {statusLabel[liveStatus] ?? liveStatus}
             </span>
           ) : (
-            liveStatus
+            statusLabel[liveStatus] ?? liveStatus
           )}
         </Badge>
 
@@ -270,6 +311,13 @@ function DocumentCard({
                 </p>
                 {progress.message && (
                   <p className="mt-0.5">{progress.message}</p>
+                )}
+                {liveAiPreview && (
+                  <div className="mt-2 max-h-36 overflow-auto rounded border border-blue-200 bg-white/80 px-3 py-2 text-gray-700">
+                    <p className="whitespace-pre-wrap break-words leading-relaxed">
+                      {liveAiPreview}
+                    </p>
+                  </div>
                 )}
               </div>
             )}

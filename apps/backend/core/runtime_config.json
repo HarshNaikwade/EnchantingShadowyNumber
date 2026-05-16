@@ -1,4 +1,4 @@
 {
-  "ai_provider": "lmstudio",
+  "ai_provider": "groq",
   "lmstudio_url": "http://localhost:1234"
 }

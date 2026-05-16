@@ -84,6 +84,7 @@ export interface BackendLogResponse {
 
 export interface DocumentProgress {
   document_id: number;
+  status: string;
   step: string;
   message: string;
   response_preview: string;

@@ -29,6 +29,7 @@ import { OllamaStatusBar } from "@/components/OllamaWarning";
 
 interface AnalysisEvent {
   type:
+    | "queued"
     | "started"
     | "clause_progress"
     | "clause_completed"
@@ -37,6 +38,55 @@ interface AnalysisEvent {
   clause_id?: number;
   message?: string;
   understanding?: string;
+}
+
+type AnalysisPhase = "idle" | "queued" | "running";
+
+function normalizeLiveUnderstanding(value?: string | null): string | null {
+  if (!value) return null;
+
+  let text = value.trim();
+  if (!text) return null;
+
+  text = text
+    .replace(/^```json\s*/i, "")
+    .replace(/```json/gi, "")
+    .replace(/^```\s*/i, "")
+    .replace(/```/g, "")
+    .replace(/^json\s*/i, "");
+
+  const keyIndex = text.indexOf('"ai_understanding"');
+  if (keyIndex >= 0) {
+    const colonIndex = text.indexOf(":", keyIndex);
+    if (colonIndex >= 0) {
+      text = text.slice(colonIndex + 1).trim();
+    }
+  }
+
+  if (text.startsWith("{") && text.includes('"ai_understanding"')) {
+    const firstQuote = text.indexOf('"', text.indexOf(":") + 1);
+    if (firstQuote >= 0) {
+      text = text.slice(firstQuote + 1);
+    }
+  }
+
+  text = text
+    .replace(/^"/, "")
+    .replace(/"\s*,\s*["'][^"']+["']\s*:[\s\S]*$/g, "")
+    .replace(/"\s*}\s*$/, "")
+    .replace(/"\s*,\s*$/, "")
+    .replace(/}\s*$/, "")
+    .replace(/^\{\s*/, "");
+
+  text = text
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\n")
+    .replace(/\\t/g, " ")
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, "\\");
+
+  return text.trim() || null;
 }
 
 const CATEGORIES = [
@@ -70,6 +120,10 @@ export default function ClausesPage() {
   >(new Map());
   const [analysisResults, setAnalysisResults] = useState<Map<number, string>>(
     new Map(),
+  );
+  const [analysisPhase, setAnalysisPhase] = useState<AnalysisPhase>("idle");
+  const [queuedClauseIds, setQueuedClauseIds] = useState<Set<number>>(
+    new Set(),
   );
 
   const { data: clauses = [], isLoading } = useQuery({
@@ -115,13 +169,20 @@ export default function ClausesPage() {
 
   const analyzeMutation = useMutation({
     mutationFn: (force: boolean) => apiClient.analyzeClauses(force),
-    onMutate: () => {
+    onMutate: (force) => {
+      const nextQueued = clauses
+        .filter((clause) => force || !clause.ai_understanding)
+        .map((clause) => clause.id);
       setIsAnalyzing(true);
+      setAnalysisPhase("queued");
       setAnalysisProgress(new Map());
       setAnalysisResults(new Map());
+      setQueuedClauseIds(new Set(nextQueued));
     },
     onError: (error) => {
       setIsAnalyzing(false);
+      setAnalysisPhase("idle");
+      setQueuedClauseIds(new Set());
       logError("Failed to queue RBI clause analysis", error);
     },
     onSuccess: () => {
@@ -138,7 +199,13 @@ export default function ClausesPage() {
       try {
         const data = JSON.parse(event.data) as AnalysisEvent;
 
+        if (data.type === "queued") {
+          setAnalysisPhase("queued");
+          return;
+        }
+
         if (data.type === "started") {
+          setAnalysisPhase("running");
           setAnalysisProgress(new Map());
           return;
         }
@@ -153,6 +220,11 @@ export default function ClausesPage() {
               next.set(data.clause_id as number, data);
               return next;
             });
+            setQueuedClauseIds((prev) => {
+              const next = new Set(prev);
+              next.delete(data.clause_id as number);
+              return next;
+            });
           }
 
           if (
@@ -160,9 +232,14 @@ export default function ClausesPage() {
             typeof data.clause_id === "number" &&
             data.understanding
           ) {
+            const understanding = normalizeLiveUnderstanding(
+              data.understanding,
+            );
             setAnalysisResults((prev) => {
               const next = new Map(prev);
-              next.set(data.clause_id as number, data.understanding as string);
+              if (understanding) {
+                next.set(data.clause_id as number, understanding);
+              }
               return next;
             });
           }
@@ -171,6 +248,8 @@ export default function ClausesPage() {
 
         if (data.type === "completed") {
           setIsAnalyzing(false);
+          setAnalysisPhase("idle");
+          setQueuedClauseIds(new Set());
           queryClient.invalidateQueries({ queryKey: ["clauses"] });
           source.close();
           return;
@@ -178,6 +257,8 @@ export default function ClausesPage() {
 
         if (data.type === "error") {
           setIsAnalyzing(false);
+          setAnalysisPhase("idle");
+          setQueuedClauseIds(new Set());
           source.close();
         }
       } catch (error) {
@@ -188,6 +269,8 @@ export default function ClausesPage() {
     source.addEventListener("message", onMessage as EventListener);
     source.onerror = () => {
       setIsAnalyzing(false);
+      setAnalysisPhase("idle");
+      setQueuedClauseIds(new Set());
       source.close();
     };
 
@@ -281,7 +364,7 @@ export default function ClausesPage() {
               {(analyzeMutation.isPending || isAnalyzing) && (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               )}
-              Analyze Clauses
+              {analysisPhase === "queued" ? "Queued" : "Analyze Clauses"}
             </Button>
             <Button
               variant="outline"
@@ -291,7 +374,7 @@ export default function ClausesPage() {
               {(analyzeMutation.isPending || isAnalyzing) && (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               )}
-              Force Re-Analyze
+              {analysisPhase === "queued" ? "Queued" : "Force Re-Analyze"}
             </Button>
             <Button onClick={openCreate}>
               <Plus className="h-4 w-4 mr-2" />
@@ -324,11 +407,24 @@ export default function ClausesPage() {
           <div className="space-y-3">
             {sortedClauses.map((clause) => {
               const event = analysisProgress.get(clause.id);
-              const liveUnderstanding = analysisResults.get(clause.id);
+              const liveUnderstanding = normalizeLiveUnderstanding(
+                analysisResults.get(clause.id),
+              );
+              const streamingUnderstanding = normalizeLiveUnderstanding(
+                event?.understanding,
+              );
+              const savedUnderstanding = normalizeLiveUnderstanding(
+                clause.ai_understanding,
+              );
               const visibleUnderstanding =
-                liveUnderstanding ?? clause.ai_understanding ?? null;
+                liveUnderstanding ??
+                streamingUnderstanding ??
+                savedUnderstanding ??
+                null;
               const isWorking = event?.type === "clause_progress";
               const isDone = event?.type === "clause_completed";
+              const isQueued =
+                queuedClauseIds.has(clause.id) && !isWorking && !isDone;
 
               return (
                 <Card key={clause.id}>
@@ -338,6 +434,9 @@ export default function ClausesPage() {
                         <div className="flex flex-wrap items-center gap-2">
                           {clause.category && (
                             <Badge variant="secondary">{clause.category}</Badge>
+                          )}
+                          {isQueued && (
+                            <Badge variant="secondary">In Queue</Badge>
                           )}
                           {isWorking && (
                             <Badge

@@ -1,6 +1,7 @@
 import logging
 import asyncio
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+import threading
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional, AsyncGenerator
@@ -18,8 +19,9 @@ from services.ai.analyzer import (
 )
 
 from core.progress_manager import (
-    emit_started, emit_clause_progress, emit_clause_completed,
-    emit_completed, emit_error, get_event_json, get_next_event, AnalysisEvent
+    emit_queued, emit_started, emit_clause_progress, emit_clause_completed,
+    emit_completed, emit_error, get_event_json, get_next_event, AnalysisEvent,
+    clean_live_ai_text,
 )
 router = APIRouter(prefix="/api/clauses", tags=["clauses"])
 logger = logging.getLogger(__name__)
@@ -37,6 +39,7 @@ async def _run_rbi_clause_analysis_async(db_url: str, force: bool = False):
     try:
         provider = get_active_provider()
         logger.info("Starting RBI clause analysis (force=%s, provider=%s)", force, provider)
+        await asyncio.sleep(1.5)
 
         # If force=True, clear all existing understandings first
         if force:
@@ -79,13 +82,45 @@ async def _run_rbi_clause_analysis_async(db_url: str, force: bool = False):
                 logger.debug("Skipping clause %d; already analyzed", clause.id)
                 continue
             logger.info("Analyzing clause %d (force=%s)", clause.id, force)
+            # Prepare streaming receiver to emit partial AI responses as clause_progress events
+            cumulative: list[str] = []
+
+            def _on_chunk(chunk: str) -> None:
+                try:
+                    cumulative.append(chunk)
+                    live_text = clean_live_ai_text("".join(cumulative))
+                    emit_clause_progress(
+                        clause.id,
+                        clause_number,
+                        total_clauses,
+                        f"Analyzing clause {clause_number}...",
+                        live_text,
+                    )
+                except Exception:
+                    # Never let streaming failures stop the analysis loop
+                    logger.exception("Failed to emit clause progress chunk")
+
+            # Emit initial progress
             emit_clause_progress(clause.id, clause_number, total_clauses, f"Analyzing clause {clause_number}...")
-            understanding = await generate_rbi_understanding(
-                clause.clause_text,
-                clause.predefined_meaning,
-                provider=provider,
-                model=resolved_model,
-            )
+
+            try:
+                understanding = await generate_rbi_understanding(
+                    clause.clause_text,
+                    clause.predefined_meaning,
+                    provider=provider,
+                    model=resolved_model,
+                    on_chunk=_on_chunk,
+                )
+            except Exception:
+                logger.exception("Failed to generate understanding for clause %d", clause.id)
+                understanding = clause.predefined_meaning or clause.clause_text[:200]
+                emit_clause_progress(
+                    clause.id,
+                    clause_number,
+                    total_clauses,
+                    f"Analyzing clause {clause_number}...",
+                    understanding,
+                )
             clause.ai_understanding = understanding
             # Persist each clause result immediately so UI can show progress as soon as it arrives.
             db.commit()
@@ -99,7 +134,7 @@ async def _run_rbi_clause_analysis_async(db_url: str, force: bool = False):
             logger.info("RBI clause analysis skipped; nothing to update")
     except Exception as e:
         logger.exception("RBI clause analysis failed")
-        await emit_error(f"Analysis failed: {str(e)}")
+        emit_error(f"Analysis failed: {str(e)}")
     finally:
         db.close()
 
@@ -112,6 +147,16 @@ def run_rbi_clause_analysis(db_url: str, force: bool = False):
         asyncio.run(_run_rbi_clause_analysis_async(db_url, force))
     else:
         loop.create_task(_run_rbi_clause_analysis_async(db_url, force))
+
+
+def start_rbi_clause_analysis_thread(db_url: str, force: bool = False) -> None:
+    """Start clause analysis outside Starlette response background handling."""
+    thread = threading.Thread(
+        target=run_rbi_clause_analysis,
+        args=(db_url, force),
+        daemon=True,
+    )
+    thread.start()
 
 
 class RBIClauseCreate(BaseModel):
@@ -144,11 +189,13 @@ def list_clauses(db: Session = Depends(get_db)):
 
 @router.post("/analyze")
 def analyze_clauses(
-    background_tasks: BackgroundTasks,
     force: bool = Query(False),
+    db: Session = Depends(get_db),
 ):
     from db.session import DATABASE_URL
-    background_tasks.add_task(run_rbi_clause_analysis, DATABASE_URL, force)
+    total_clauses = db.query(RBIClause).count()
+    emit_queued(total_clauses)
+    start_rbi_clause_analysis_thread(DATABASE_URL, force)
     logger.info("Queued RBI clause analysis (force=%s)", force)
     return {"message": "RBI clause analysis queued", "force": force}
 
