@@ -90,44 +90,42 @@ export default function SessionsPage() {
       <header className="border-b bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between gap-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 flex-1 min-w-0">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center shrink-0">
-                  <Shield className="h-5 w-5 text-white" />
-                </div>
-                <div className="min-w-0">
-                  <h1 className="text-base sm:text-lg md:text-xl font-bold text-gray-900 truncate">
-                    RBI Compliance Checker
-                  </h1>
-                  <p className="text-xs text-muted-foreground hidden sm:block">
-                    Local Agreement Analysis System
-                  </p>
-                </div>
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center shrink-0">
+                <Shield className="h-5 w-5 text-white" />
               </div>
+              <div className="min-w-0">
+                <h1 className="text-base sm:text-lg md:text-xl font-bold text-gray-900 truncate">
+                  RBI Compliance Checker
+                </h1>
+                <p className="text-xs text-muted-foreground hidden sm:block">
+                  Local Agreement Analysis System
+                </p>
+              </div>
+            </div>
 
-              <div className="flex flex-col xs:flex-row items-stretch xs:items-center gap-2 xs:gap-3 w-full sm:w-auto">
-                <OllamaStatusBar />
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => navigate("/settings/clauses")}
-                    className="text-xs sm:text-sm"
-                  >
-                    <Settings2 className="h-3.5 w-3.5" />
-                    <span className="hidden sm:inline ml-2">
-                      Manage Clauses
-                    </span>
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => setShowCreate(true)}
-                    className="text-xs sm:text-sm"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    <span className="ml-2 hidden xs:inline">New Session</span>
-                  </Button>
-                </div>
+            <div className="flex flex-col xs:flex-row items-stretch xs:items-center gap-2 xs:gap-3">
+              <OllamaStatusBar />
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate("/settings/clauses")}
+                  className="text-xs sm:text-sm"
+                >
+                  <Settings2 className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline ml-2">
+                    Manage Clauses
+                  </span>
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => setShowCreate(true)}
+                  className="text-xs sm:text-sm"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span className="ml-2 hidden xs:inline">New Session</span>
+                </Button>
               </div>
             </div>
           </div>

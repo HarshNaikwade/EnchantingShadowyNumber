@@ -1,0 +1,4 @@
+{
+  "ai_provider": "lmstudio",
+  "lmstudio_url": "http://localhost:1234"
+}

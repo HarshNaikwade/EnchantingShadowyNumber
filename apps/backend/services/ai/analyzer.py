@@ -11,7 +11,7 @@ Quick-start:
   LMStudio (local, OpenAI-compatible):
     AI_PROVIDER=lmstudio
     LMSTUDIO_BASE_URL=http://localhost:1234
-    LMSTUDIO_MODEL=gemma4
+    LMSTUDIO_MODEL=google/gemma-4-e4b
 
   Groq (cloud):
     AI_PROVIDER=groq
@@ -49,16 +49,26 @@ def get_ollama_base_url() -> str:
 
 # LMStudio (local, OpenAI-compatible)
 LMSTUDIO_BASE_URL: str = os.getenv("LMSTUDIO_BASE_URL", "http://localhost:1234")
-LMSTUDIO_MODEL: str = os.getenv("LMSTUDIO_MODEL", "gemma4")
+LMSTUDIO_MODEL: str = os.getenv("LMSTUDIO_MODEL", "google/gemma-4-e4b")
+
+
+def _normalize_openai_compatible_base_url(url: str) -> str:
+    """Accept either the server root or an OpenAI-compatible /v1 URL."""
+    base_url = url.strip().rstrip("/")
+    if base_url.endswith("/v1"):
+        return base_url[:-3]
+    return base_url
 
 
 def get_lmstudio_base_url() -> str:
     """Return the active LMStudio base URL (runtime-configurable)."""
     try:
         from core.runtime_config import get_setting
-        return get_setting("lmstudio_url", LMSTUDIO_BASE_URL)
+        return _normalize_openai_compatible_base_url(
+            get_setting("lmstudio_url", LMSTUDIO_BASE_URL)
+        )
     except Exception:
-        return LMSTUDIO_BASE_URL
+        return _normalize_openai_compatible_base_url(LMSTUDIO_BASE_URL)
 
 # Groq  (OpenAI-compatible)
 GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")

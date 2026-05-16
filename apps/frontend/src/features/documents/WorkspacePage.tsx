@@ -136,8 +136,8 @@ function DocumentCard({
 
   return (
     <Card className="overflow-hidden">
-      <div className="flex items-center gap-3 p-4 border-b bg-white">
-        <div className="flex items-center gap-2 flex-1 min-w-0">
+      <div className="flex flex-col gap-3 border-b bg-white p-4 sm:flex-row sm:items-center">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           <span className="text-xs text-muted-foreground w-6 shrink-0">
             {index}.
           </span>
@@ -168,7 +168,7 @@ function DocumentCard({
           )}
         </Badge>
 
-        <div className="flex items-center gap-1">
+        <div className="flex w-full items-center justify-between gap-1 sm:w-auto sm:justify-start">
           <a href={reportUrl} download target="_blank" rel="noreferrer">
             <Button variant="outline" size="sm" className="h-8">
               <Download className="h-3.5 w-3.5" />
@@ -376,27 +376,38 @@ export default function WorkspacePage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-white shadow-sm sticky top-0 z-10">
+      <header className="sticky top-0 z-10 border-b bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center shrink-0">
-              <Shield className="h-5 w-5 text-white" />
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+            <div className="flex min-w-0 items-center gap-3">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => navigate("/")}
+                className="shrink-0"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary">
+                <Shield className="h-5 w-5 text-white" />
+              </div>
+              <div className="min-w-0">
+                <h1 className="truncate text-lg font-bold text-gray-900">
+                  Session - {session.title}
+                </h1>
+                <p className="text-xs text-muted-foreground">
+                  Created {safeFormatDate(session.created_at)}
+                </p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <h1 className="text-lg font-bold text-gray-900 truncate">
-                Session - {session.title}
-              </h1>
-              <p className="text-xs text-muted-foreground">
-                Created {safeFormatDate(session.created_at)}
-              </p>
-            </div>
-            <div className="ml-auto flex items-center gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2 lg:ml-auto lg:justify-end">
               <OllamaStatusBar />
               <a href={reportUrl} download target="_blank" rel="noreferrer">
-                <Button variant="outline" size="sm" className="gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 whitespace-nowrap"
+                >
                   <Download className="h-4 w-4" />
                   Full Report PDF
                 </Button>

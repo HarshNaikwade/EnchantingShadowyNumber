@@ -1,20 +1,21 @@
 import {
   AlertTriangle,
-  Wifi,
-  WifiOff,
+  Check,
   ChevronDown,
   Pencil,
-  Check,
+  Wifi,
+  WifiOff,
   X,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
-import { useRef, useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 import apiClient from "@/lib/api";
+import { logError } from "@/lib/debugLogger";
 import { storage } from "@/lib/storage";
 
 const PROVIDERS = [
   { value: "ollama", label: "Ollama" },
-  { value: "lmstudio", label: "LMStudio" },
+  { value: "lmstudio", label: "LM Studio" },
   { value: "groq", label: "Groq" },
 ];
 
@@ -23,6 +24,7 @@ export function OllamaStatusBar() {
   const [editingUrl, setEditingUrl] = useState(false);
   const [urlInput, setUrlInput] = useState("");
   const [provider, setProvider] = useState(() => storage.getProvider());
+  const queryClient = useQueryClient();
   const dropdownRef = useRef<HTMLDivElement>(null);
   const urlInputRef = useRef<HTMLInputElement>(null);
 
@@ -31,6 +33,23 @@ export function OllamaStatusBar() {
     queryFn: apiClient.health,
     refetchInterval: 30000,
   });
+
+  useEffect(() => {
+    if (!health) return;
+
+    if (health.ai_provider) {
+      setProvider(health.ai_provider);
+      storage.setProvider(health.ai_provider);
+    }
+
+    if (health.ollama_url) {
+      storage.setOllamaUrl(health.ollama_url);
+    }
+
+    if (health.lmstudio_url) {
+      storage.setLMStudioUrl(health.lmstudio_url);
+    }
+  }, [health]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -52,22 +71,36 @@ export function OllamaStatusBar() {
     }
   }, [editingUrl]);
 
-  if (isLoading || !health) return null;
-
-  const currentProvider = provider;
+  // Use cached provider from localStorage as fallback
+  const currentProvider = health?.ai_provider ?? provider;
   const currentLabel =
     PROVIDERS.find((p) => p.value === currentProvider)?.label ??
     currentProvider;
-  const model = health.ai_model ?? "";
-  const connected = health.ai_connected;
+
+  // Show loading state when first loading, but still render space
+  const isConnected = health?.ai_connected ?? false;
+  const model = health?.ai_model ?? "";
+
+  // If still loading and have no cached data, show skeleton
+  if (isLoading && !provider) {
+    return (
+      <div className="flex items-center gap-2 whitespace-nowrap">
+        <div className="h-8 w-20 rounded-md border border-border bg-gray-100 animate-pulse" />
+        <div className="h-8 w-32 rounded-md border border-gray-200 bg-gray-50 animate-pulse" />
+      </div>
+    );
+  }
+
+  // Now we have provider either from health or cache
   const isOllama = currentProvider === "ollama";
   const isLMStudio = currentProvider === "lmstudio";
+  const isGroq = currentProvider === "groq";
 
   const getProviderUrl = () => {
     if (isOllama) {
-      return storage.getOllamaUrl();
+      return health?.ollama_url ?? storage.getOllamaUrl();
     } else if (isLMStudio) {
-      return storage.getLMStudioUrl();
+      return health?.lmstudio_url ?? storage.getLMStudioUrl();
     }
     return "";
   };
@@ -79,22 +112,33 @@ export function OllamaStatusBar() {
 
   const saveUrl = () => {
     if (urlInput.trim()) {
-      if (isOllama) {
-        storage.setOllamaUrl(urlInput.trim());
-      } else if (isLMStudio) {
-        storage.setLMStudioUrl(urlInput.trim());
-      }
-      setEditingUrl(false);
+      const nextUrl = urlInput.trim();
+      const save = async () => {
+        try {
+          if (isOllama) {
+            await apiClient.setOllamaUrl(nextUrl);
+            storage.setOllamaUrl(nextUrl);
+          } else if (isLMStudio) {
+            await apiClient.setLMStudioUrl(nextUrl);
+            storage.setLMStudioUrl(nextUrl);
+          }
+          await queryClient.invalidateQueries({ queryKey: ["health"] });
+          setEditingUrl(false);
+        } catch (error) {
+          logError("Failed to save provider URL", error);
+        }
+      };
+
+      void save();
     }
   };
 
   return (
-    <div className="flex items-center gap-2">
-      {/* Provider dropdown */}
-      <div className="relative" ref={dropdownRef}>
+    <div className="flex items-center gap-2 whitespace-nowrap">
+      <div className="relative shrink-0" ref={dropdownRef}>
         <button
           onClick={() => setOpen((v) => !v)}
-           className="flex items-center gap-1.5 text-xs font-medium px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-md border border-border bg-white hover:bg-gray-50 transition-colors whitespace-nowrap"
+          className="flex items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-white px-2 py-1 text-xs font-medium transition-colors hover:bg-gray-50 sm:px-2.5 sm:py-1.5"
         >
           <span>{currentLabel}</span>
           <ChevronDown
@@ -103,17 +147,29 @@ export function OllamaStatusBar() {
         </button>
 
         {open && (
-           <div className="absolute right-0 top-full mt-1 w-28 sm:w-32 bg-white border border-border rounded-md shadow-lg z-50 overflow-hidden">
+          <div className="absolute right-0 top-full z-50 mt-1 w-28 overflow-hidden rounded-md border border-border bg-white shadow-lg sm:w-32">
             {PROVIDERS.map((p) => (
               <button
                 key={p.value}
                 onClick={() => {
-                  storage.setProvider(p.value);
-                  setProvider(p.value);
-                  setOpen(false);
-                  setEditingUrl(false);
+                  const save = async () => {
+                    try {
+                      await apiClient.setProvider(p.value);
+                      storage.setProvider(p.value);
+                      setProvider(p.value);
+                      await queryClient.invalidateQueries({
+                        queryKey: ["health"],
+                      });
+                      setOpen(false);
+                      setEditingUrl(false);
+                    } catch (error) {
+                      logError("Failed to save AI provider", error);
+                    }
+                  };
+
+                  void save();
                 }}
-                className={`w-full text-left text-xs px-3 py-2 hover:bg-gray-50 transition-colors flex items-center justify-between ${
+                className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs transition-colors hover:bg-gray-50 ${
                   p.value === currentProvider
                     ? "font-semibold text-primary"
                     : "text-gray-700"
@@ -129,43 +185,43 @@ export function OllamaStatusBar() {
         )}
       </div>
 
-      {/* Connection status + URL editor */}
-      {connected ? (
-         <div className="flex flex-col xs:flex-row items-start xs:items-center gap-1 xs:gap-1.5 flex-1 xs:flex-none">
-           <div className="flex items-center gap-1 xs:gap-1.5 text-xs text-green-600 bg-green-50 border border-green-200 rounded-md px-2 xs:px-2.5 py-1 xs:py-1.5 min-w-0">
-             <Wifi className="h-3 xs:h-3.5 w-3 xs:w-3.5 shrink-0" />
-             <span className="truncate">Connected{model ? ` — ${model}` : ""}</span>
+      {isConnected ? (
+        <div className="flex min-w-0 items-center gap-1.5">
+          <div className="flex min-w-0 max-w-full items-center gap-1 rounded-md border border-green-200 bg-green-50 px-2 py-1 text-xs text-green-600 xs:gap-1.5 xs:px-2.5 xs:py-1.5 sm:max-w-[22rem]">
+            <Wifi className="h-3 w-3 shrink-0 xs:h-3.5 xs:w-3.5" />
+            <span className="min-w-0 truncate">
+              Connected{model ? ` - ${model}` : ""}
+            </span>
           </div>
           {(isOllama || isLMStudio) && !editingUrl && (
             <button
               onClick={openUrlEditor}
               title={`Change ${currentLabel} URL`}
-               className="p-1 xs:p-1.5 text-muted-foreground hover:text-gray-700 rounded hover:bg-gray-100 transition-colors shrink-0"
+              className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-gray-100 hover:text-gray-700 xs:p-1.5"
             >
-               <Pencil className="h-3 xs:h-3 w-3 xs:w-3" />
+              <Pencil className="h-3 w-3" />
             </button>
           )}
         </div>
       ) : (
-         <div className="flex flex-col xs:flex-row items-start xs:items-center gap-1 xs:gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 xs:px-2.5 py-1 xs:py-1.5 min-w-0 flex-1 xs:flex-none">
-           <WifiOff className="h-3 xs:h-3.5 w-3 xs:w-3.5 shrink-0" />
-          {isOllama ? (
-            <span>
-               Not reachable at{" "}
-               <code className="font-mono font-medium truncate">{getProviderUrl()}</code>
-            </span>
-          ) : isLMStudio ? (
-            <span>
-               Not reachable at{" "}
-               <code className="font-mono font-medium truncate">{getProviderUrl()}</code>
+        <div className="flex min-w-0 max-w-full items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-700 xs:gap-1.5 xs:px-2.5 xs:py-1.5">
+          <WifiOff className="h-3 w-3 shrink-0 xs:h-3.5 xs:w-3.5" />
+          {isOllama || isLMStudio ? (
+            <span className="min-w-0 truncate">
+              Not reachable at{" "}
+              <code className="inline-block max-w-[12rem] truncate align-bottom font-mono font-medium sm:max-w-[16rem]">
+                {getProviderUrl()}
+              </code>
             </span>
           ) : (
-            <span>Check your GROQ_API_KEY — AI analysis skipped</span>
+            <span className="min-w-0 truncate">
+              Check your GROQ_API_KEY - AI analysis skipped
+            </span>
           )}
           {(isOllama || isLMStudio) && !editingUrl && (
             <button
               onClick={openUrlEditor}
-              className="ml-1 underline underline-offset-2 font-medium hover:text-amber-900 transition-colors"
+              className="ml-1 shrink-0 font-medium underline underline-offset-2 transition-colors hover:text-amber-900"
             >
               Change URL
             </button>
@@ -173,9 +229,8 @@ export function OllamaStatusBar() {
         </div>
       )}
 
-      {/* Inline URL editor (shown when editing) */}
       {(isOllama || isLMStudio) && editingUrl && (
-        <div className="flex flex-col xs:flex-row items-stretch xs:items-center gap-1 xs:gap-1 w-full xs:w-auto">
+        <div className="flex min-w-0 items-center gap-1">
           <input
             ref={urlInputRef}
             value={urlInput}
@@ -187,21 +242,21 @@ export function OllamaStatusBar() {
             placeholder={
               isOllama ? "http://localhost:11434" : "http://localhost:1234"
             }
-             className="text-xs border border-border rounded px-2 py-1 flex-1 xs:w-32 sm:w-40 focus:outline-none focus:ring-1 focus:ring-primary font-mono"
+            className="w-40 max-w-[54vw] rounded border border-border px-2 py-1 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-primary sm:w-48"
           />
           <button
             onClick={saveUrl}
-             className="p-1 xs:p-1.5 text-green-600 hover:bg-green-50 rounded transition-colors shrink-0"
+            className="shrink-0 rounded p-1 text-green-600 transition-colors hover:bg-green-50 xs:p-1.5"
             title="Save URL"
           >
-             <Check className="h-3 xs:h-3.5 w-3 xs:w-3.5" />
+            <Check className="h-3 w-3 xs:h-3.5 xs:w-3.5" />
           </button>
           <button
             onClick={() => setEditingUrl(false)}
-             className="p-1 xs:p-1.5 text-gray-400 hover:bg-gray-100 rounded transition-colors shrink-0"
+            className="shrink-0 rounded p-1 text-gray-400 transition-colors hover:bg-gray-100 xs:p-1.5"
             title="Cancel"
           >
-             <X className="h-3 xs:h-3.5 w-3 xs:w-3.5" />
+            <X className="h-3 w-3 xs:h-3.5 xs:w-3.5" />
           </button>
         </div>
       )}
@@ -227,41 +282,40 @@ export function OllamaWarningModal({
   const isGroq = health?.ai_provider === "groq";
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-      <div className="bg-white rounded-lg p-6 max-w-md mx-4 shadow-xl">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="mx-4 max-w-md rounded-lg bg-white p-6 shadow-xl">
+        <div className="mb-4 flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100">
             <AlertTriangle className="h-5 w-5 text-amber-600" />
           </div>
           <h2 className="text-lg font-semibold">
-            {isGroq ? "Groq Not Connected" : "Ollama Not Connected"}
+            {isGroq ? "Groq Not Connected" : "AI Provider Not Connected"}
           </h2>
         </div>
-        <p className="text-sm text-gray-600 mb-4">
-          The AI analysis engine ({isGroq ? "Groq" : "Ollama"}) is not
+        <p className="mb-4 text-sm text-gray-600">
+          The AI analysis engine ({isGroq ? "Groq" : "local provider"}) is not
           reachable. Your document will still be uploaded and parsed, but
           compliance analysis requires a working AI provider.
         </p>
         {isGroq ? (
-          <div className="bg-gray-50 rounded-md p-3 text-xs font-mono text-gray-700 mb-4">
+          <div className="mb-4 rounded-md bg-gray-50 p-3 font-mono text-xs text-gray-700">
             AI_PROVIDER=groq{"\n"}GROQ_API_KEY=gsk_...
           </div>
         ) : (
           <>
-            <div className="bg-gray-50 rounded-md p-3 text-xs font-mono text-gray-700 mb-3">
-              ollama serve
+            <div className="mb-3 rounded-md bg-gray-50 p-3 font-mono text-xs text-gray-700">
+              Start your local AI server, then use the Change URL control.
             </div>
-            <p className="text-xs text-gray-500 mb-4">
-              Since this app runs in the cloud, Ollama must be publicly
-              accessible (e.g. via ngrok or Tailscale). Use the{" "}
-              <span className="font-medium">Change URL</span> button in the
-              header to point to your Ollama endpoint.
+            <p className="mb-4 text-xs text-gray-500">
+              If the app is running in Docker, use
+              http://host.docker.internal:1234 for LM Studio on the host
+              machine. In direct dev mode, http://localhost:1234 is correct.
             </p>
           </>
         )}
         <button
           onClick={onClose}
-          className="w-full bg-primary text-white rounded-md py-2 text-sm font-medium hover:bg-primary/90 transition-colors"
+          className="w-full rounded-md bg-primary py-2 text-sm font-medium text-white transition-colors hover:bg-primary/90"
         >
           Continue Anyway
         </button>

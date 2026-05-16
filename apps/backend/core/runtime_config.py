@@ -11,9 +11,10 @@ _CONFIG_FILE = os.path.join(os.path.dirname(__file__), "runtime_config.json")
 _lock = threading.Lock()
 
 _DEFAULTS: dict = {
-    "ai_provider": os.getenv("AI_PROVIDER", "ollama"),
+    "ai_provider": os.getenv("AI_PROVIDER", "lmstudio"),
     "ollama_url": os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
     "lmstudio_url": os.getenv("LMSTUDIO_BASE_URL", "http://localhost:1234"),
+    "groq_url": os.getenv("GROQ_BASE_URL", "")
 }
 
 

@@ -244,7 +244,7 @@ export default function ClausesPage() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-white shadow-sm">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center shrink-0">
@@ -270,7 +270,7 @@ export default function ClausesPage() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-4">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-4">
         <div className="flex flex-wrap items-center gap-2 justify-between">
           <h2 className="text-2xl font-bold text-gray-900">RBI Clauses</h2>
           <div className="flex flex-wrap items-center gap-2">

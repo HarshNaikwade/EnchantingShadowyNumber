@@ -13,7 +13,7 @@ if env_path.exists():
 
 from db.session import engine, Base, SessionLocal
 from db.models import RBIClause
-from api.routes import analysis, documents, reports, clauses
+from api.routes import analysis, documents, reports, clauses, settings
 from core.log_buffer import buffer_handler
 from core.config import UPLOAD_DIR
 
@@ -57,6 +57,7 @@ app.include_router(analysis.router)
 app.include_router(documents.router)
 app.include_router(reports.router)
 app.include_router(clauses.router)
+app.include_router(settings.router)
 
 
 @app.get("/api/health")
@@ -74,10 +75,21 @@ async def health_check():
     )
 
     provider = get_active_provider()
-    ai_connected = await check_ai_connection()
-    ollama_connected = await check_ollama_connection()
-    lmstudio_connected = await check_lmstudio_connection()
-    groq_connected = await check_groq_connection()
+    ollama_connected = False
+    lmstudio_connected = False
+    groq_connected = False
+
+    if provider == "ollama":
+        ollama_connected = await check_ollama_connection()
+        ai_connected = ollama_connected
+    elif provider == "lmstudio":
+        lmstudio_connected = await check_lmstudio_connection()
+        ai_connected = lmstudio_connected
+    elif provider == "groq":
+        groq_connected = await check_groq_connection()
+        ai_connected = groq_connected
+    else:
+        ai_connected = await check_ai_connection()
     return {
         "status": "ok",
         "ai_provider": provider,
