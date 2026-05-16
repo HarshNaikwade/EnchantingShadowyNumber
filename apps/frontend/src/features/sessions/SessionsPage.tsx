@@ -114,9 +114,7 @@ export default function SessionsPage() {
                   className="text-xs sm:text-sm"
                 >
                   <Settings2 className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline ml-2">
-                    Manage Clauses
-                  </span>
+                  <span className="hidden sm:inline ml-2">Manage Clauses</span>
                 </Button>
                 <Button
                   size="sm"
